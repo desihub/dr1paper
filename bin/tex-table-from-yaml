@@ -1,0 +1,112 @@
+#!/usr/bin/env python
+
+"""Convert a desitarget (bitmask) yaml file to a (first guess) TeX table
+
+source /global/cfs/cdirs/desi/software/desi_environment.sh main
+
+"""
+from importlib import import_module
+
+from desiutil.log import get_logger
+log = get_logger()
+
+import argparse
+ap = argparse.ArgumentParser()
+
+# ADM Allowed DESI survey phases (for the purposes of this code).
+allowed_phases = ["sv1", "sv2", "sv3", "main"]
+ap.add_argument("phase", choices=allowed_phases,
+               help="DESI survey phase used to look up the appopriate bit-mask")
+ap.add_argument("--ncolumns", default=2, type=int,
+               help="Number of columns in the secondary table")
+ns = ap.parse_args()
+
+# ADM set different bits based on whether we're using the main survey
+# code or an iteration of SV.
+if ns.phase == "main":
+    import desitarget.cuts as targcuts
+    from desitarget.targetmask import desi_mask, bgs_mask, mws_mask, scnd_mask
+    phase = ""
+elif ns.phase[:2] == "sv":
+    targmask = import_module(f"desitarget.{ns.phase}.{ns.phase}_targetmask")
+    desi_mask = targmask.desi_mask
+    bgs_mask = targmask.bgs_mask
+    mws_mask = targmask.mws_mask
+    scnd_mask = targmask.scnd_mask
+    phase = ns.phase
+
+# ADM generate tables for the primary targets.
+for mx, label, mxname, colname in zip([desi_mask, bgs_mask, mws_mask], ["maindark", "mainbgs", "mainmws"], ["desi\_mask", "bgs\_mask", "mws\_mask"], ["DESI\_TARGET", "BGS\_TARGET", "MWS\_TARGET"]):
+    if label == "maindark":
+        preamble = "Dark-time"
+    if label == "mainbgs":
+        preamble = "Bright Galaxy Survey (BGS)"
+    if label == "mainmws":
+        preamble = "Milky Way Survey (MWS)"
+    print("\\begin{deluxetable*}{ccc}[htb]")
+    if ns.phase == "main":
+        print("\\tablecaption{"+ f"{preamble}" + " targeting bits for the DESI Main Survey" + ".\label{"+f"table:{label}"+"}}")
+    else:
+        print("\\tablecaption{"+ f"{preamble}" + " targeting bits for the DESI Main Survey" + "{}".format(phase.upper())+".\label{"+f"table:{phase}dark"+"}}")
+    print("\\tablewidth{0pt}")
+    print("\\tablehead{")
+    print("\\colhead{Bit-name} &")
+    print("\\colhead{Bit-value} &")
+    print("\\colhead{Description}")
+    print("}")
+    print("\startdata")
+    for bit in mx.names():
+        bitname = bit.replace("_", "\\_")
+        comment = mx[bit].comment.replace("~", "$\sim$")
+        print("{\\tt " + "{}".format(bitname) + "} " + "& {} & {} \\\\".format(mx[bit].bitnum, comment))
+    print("\\enddata")
+    print("\\begin{center}")
+    if ns.phase == "main":
+        print("\\tablenotetext{}{Bits are stored in the {\\tt " + f"{mxname}" + "} and accessed via the {\\tt " + "{}".format(colname) + "} column \citep[see][for more details]{myers23a}.}")
+    else:
+        print("\\tablenotetext{}{Bits are stored in the {\\tt " + f"{phase}" + "\_" +f"{mxname}" +
+              "} and accessed via the {\\tt " + f"{phase.upper()}" + "\_" + "{}.format(colname)" + "} column \citep[see][for more details]{myers23a}.}")
+    if not ns.phase == "main":
+        print("\\tablenotetext{a}{``FDR'' refers to the DESI Final Design Report \citep[see][]{desi16a}.}")
+    print("\\end{center}")
+    print("\\end{deluxetable*}")
+    print("")
+    print("")
+
+# ADM a table for the secondary targets in a slightly different format.
+print("\\begin{deluxetable*}{" + "c"*2*ns.ncolumns + "}[t]")
+if ns.phase == "main":
+    print("\\tablecaption{Secondary targeting bits for the DESI Main Survey" + ".\label{"+f"table:mainsec"+"}}")
+else:
+    print("\\tablecaption{Secondary targeting bits for " + "{}".format(phase.upper())+".\label{"+f"table:{phase}sec"+"}}")
+print("\\tablewidth{0pt}")
+print("\\tablehead{")
+for i in range(ns.ncolumns-1):
+    print("\\colhead{Bit-name} & ")
+    print("\\colhead{Bit-value} & ")
+print("\\colhead{Bit-name} & ")
+print("\\colhead{Bit-value}")
+print("}")
+print("\\startdata")
+
+# ADM need to swap the order of the names in the bit-mask so that bit
+# ADM numbers count down-the-columns instead of across-the-rows.
+noms = scnd_mask.names()
+nrows = len(noms)//ns.ncolumns
+reorder = []
+for j in range(nrows):
+    for i, nom in enumerate(noms):
+        if i%nrows == j:
+            reorder.append(nom)
+
+for i, bit in enumerate(reorder):
+    bitname = bit.replace("_", "\\_")
+    if i%ns.ncolumns == ns.ncolumns -1:
+        print("{\\tt", bitname, "} &", scnd_mask[bit].bitnum, "\\\\")
+    else:
+        print("{\\tt", bitname, "} &", scnd_mask[bit].bitnum, end=" & ")
+print("\\enddata")
+print("\\begin{center}")
+print("\\tablenotetext{}{Add a note.}")
+print("\\end{center}")
+print("\\end{deluxetable*}")

@@ -1,0 +1,164 @@
+#!/usr/bin/env python
+
+"""Plot density of good redshifts on the sky.
+
+source /global/cfs/cdirs/desi/software/desi_environment.sh main
+
+"""
+import os, sys, glob
+import numpy as np
+import matplotlib.pyplot as plt
+import fitsio
+import healpy
+from astropy.table import Table
+
+from desiutil.plots import plot_healpix_map, init_sky
+from desimodel.footprint import radec2pix
+
+import argparse
+p = argparse.ArgumentParser()
+p.add_argument('--nside', type=int, default=64, help='HEALPix nside')
+p.add_argument('--noplot', action='store_true', help="calc densities but don't plot")
+args = p.parse_args()
+
+nside = args.nside
+npix = healpy.nside2npix(nside)
+pixarea = healpy.nside2pixarea(nside, degrees=True)
+
+# This is an array wrapper object just so that we can set .vmin and .vmax
+# which plot_healpix_map uses for color scaling.
+# see https://numpy.org/doc/stable/user/basics.subclassing.html#simple-example-adding-an-extra-attribute-to-ndarray
+# and https://stackoverflow.com/questions/67509913/add-an-attribute-to-a-numpy-array-in-runtime
+class ArrayVMinMax(np.ndarray):
+
+    def __new__(cls, input_array):
+        obj = np.asarray(input_array).view(cls)
+        obj.vmin = 0.0
+        obj.vmax = np.max(input_array)
+        return obj
+
+    def __array_finalize__(self, obj):
+        if obj is None:
+            return
+
+        self.vmin = getattr(obj, 'vmin', None)
+        self.vmax = getattr(obj, 'vmax', None)
+
+#- Load zcatalog
+zcatfile = os.path.expandvars('$DESI_ROOT/spectro/redux/iron/zcatalog/zall-pix-iron.fits')
+zcat = fitsio.read(zcatfile, 'ZCATALOG', rows=np.arange(1000), 
+        columns=('TARGETID', 'SURVEY', 'TARGET_RA', 'TARGET_DEC', 'ZWARN', 'OBJTYPE'))
+
+#- Basic quality cuts
+ii = (zcat['ZWARN']==0) & (zcat['OBJTYPE']=='TGT')
+zcat = zcat[ii]
+
+surveypix = dict()
+for survey in ('sv1', 'sv2', 'sv3', 'main'):
+    ii = zcat['SURVEY'] == survey
+    density = np.zeros(npix)
+
+    # trim to unique targets within this survey
+    ra = zcat['TARGET_RA'][ii]
+    dec = zcat['TARGET_DEC'][ii]
+    targetid = zcat['TARGETID'][ii]
+    keep = np.unique(targetid, return_index=True)[1]
+    targetid = targetid[keep]
+    ra = ra[keep]
+    dec = dec[keep]
+
+    tgtpix = radec2pix(nside, ra, dec)
+    for h, c in zip(*np.unique(tgtpix, return_counts=True)):
+        density[h] = c / pixarea
+
+    surveypix[survey] = ArrayVMinMax(density)
+
+#- Print max densities for each survey
+print('median, 95th percentile, and max densities per survey:')
+for survey in surveypix:
+    ii = surveypix[survey] > 0
+    if np.sum(ii) > 0:
+        p50, p95 = np.percentile(surveypix[survey][ii], (50, 95))
+        pmax = np.max(surveypix[survey][ii])
+        print(f'  {survey}  {p50:5.0f}  {p95:5.0f}  {pmax:5.0f}')
+
+#- Save density per healpix
+t = Table()
+t['healpix'] = np.arange(npix)
+for survey in surveypix:
+    t[survey] = surveypix[survey]
+
+keep = (t['sv1']+t['sv2']+t['sv3']+t['main']) > 0
+t = t[keep]
+datafile = f'goodz_density_hpix_nest_nside{nside}.csv'
+t.write(datafile, overwrite=True)
+print(f'Wrote {datafile}')
+
+if args.noplot:
+    print('--noplot set, exiting now')
+    sys.exit(0)
+
+#- don't plot zeros, so convert to NaN
+for survey in surveypix.keys():
+    notargets = surveypix[survey] == 0
+    surveypix[survey][notargets] = np.NaN
+
+#- set vmin/max for plotting
+surveypix['sv1'].vmax = 2000
+surveypix['sv2'].vmax = 2000
+surveypix['sv3'].vmax = 8000
+surveypix['main'].vmax = 8000
+
+#- rescale sequential color maps so that they don't start at white
+istart = 65
+cmap = plt.get_cmap('Greens')
+cmap_greens = cmap.from_list('Greens2', cmap(np.arange(istart,256)))
+cmap = plt.get_cmap('Blues')
+cmap_blues = cmap.from_list('Blues2', cmap(np.arange(istart,256)))
+cmap = plt.get_cmap('Oranges')
+cmap_oranges = cmap.from_list('Orange2', cmap(np.arange(istart,256)))
+
+print('Making plot (this is slow)')
+# fig = plt.figure(figsize=(8.0, 6.0), dpi=200)
+fig = plt.figure(figsize=(6.0, 5.0), dpi=200)
+ax = plt.subplot(111, projection='mollweide')
+
+ax = init_sky(galactic_plane_color='0.9', ecliptic_plane_color=None, ax=ax)
+
+plot_healpix_map(surveypix['sv1'], cmap=cmap_blues, nest=True,
+                      ax=ax, colorbar=False)
+
+plot_healpix_map(surveypix['sv2'], cmap=cmap_greens, nest=True,
+                 ax=ax, colorbar=False)
+
+plot_healpix_map(surveypix['sv3'], cmap=cmap_oranges, nest=True,
+                 ax=ax, colorbar=False)
+
+# plt.colorbar(ax.collections[1], ax=ax, shrink=0.5)
+# plt.colorbar(ax.collections[2], ax=ax, shrink=0.5)
+# plt.colorbar(ax.collections[3], ax=ax, shrink=0.5)
+
+shrink=0.8
+plt.colorbar(ax.collections[1], ax=ax, orientation='horizontal', aspect=50, pad=0.0, shrink=shrink,
+             label='Density of confident redshifts [deg$^{-2}$]')
+plt.colorbar(ax.collections[2], ax=ax, orientation='horizontal', aspect=50, pad=0.02, shrink=shrink)
+plt.colorbar(ax.collections[3], ax=ax, orientation='horizontal', aspect=50, pad=0.15, shrink=shrink)
+
+plt.tight_layout()
+
+ax1 = fig.add_axes( (0,0,1,1), frame_on=False )
+# ax1.text(0.05, 0.145, 'sv1')
+# ax1.text(0.05, 0.265, 'sv2')
+# ax1.text(0.05, 0.38, 'sv3')
+
+ax1.text(0.127, 0.174, 'Target Selection Validation (sv1)')
+ax1.text(0.127, 0.294, 'Operations Development (sv2)')
+ax1.text(0.127, 0.410, 'One-Percent Survey (sv3)')
+
+plt.savefig('goodz_density.png')
+plt.show()
+
+
+
+    
+
