@@ -1,0 +1,236 @@
+#!/usr/bin/env python
+
+"""
+Count SV observations, broken down by era
+"""
+
+import os
+from astropy.table import Table
+import numpy as np
+import healpy as hp
+
+from desimodel.footprint import is_point_in_desi
+
+def get_area(tiles, nside=256):
+    """
+    Return area covered by the input tiles;
+    code adapted from Anand Raichoor
+
+    Note: since this avoids double counting, it's also ok if the "tiles"
+    are a list of exposures instead of tiles; they just need TILERA/TILEDEC
+    or RA/DEC columns representing tile centers.
+    """
+    npix = hp.nside2npix(nside)
+    pixarea = hp.nside2pixarea(nside, degrees=True)
+    hpixels = np.arange(npix, dtype=int)
+    thetas, phis = hp.pix2ang(nside, hpixels, nest=True)
+    hpixra, hpixdec = np.degrees(phis), 90. - np.degrees(thetas)
+
+    if 'RA' not in tiles.colnames:
+        tiles['RA'] = tiles['TILERA']
+
+    if 'DEC' not in tiles.colnames:
+        tiles['DEC'] = tiles['TILEDEC']
+
+    npix = np.sum(is_point_in_desi(tiles, hpixra, hpixdec))
+    return npix*pixarea
+
+main_start = 20210514
+
+expfile = os.path.expandvars('$DESI_ROOT/spectro/redux/iron/exposures-iron.csv')
+exp = Table.read(expfile)
+
+surveynames = exp['SURVEY'].copy()
+exp['SURVEY'] = np.zeros(len(exp), dtype='U20')  # don't truncate names
+exp['SURVEY'][:] = surveynames
+#- special case for sv1 dedicated secondary tiles;
+#- rename their survey to "sv1x"
+ii = (80862 <= exp['TILEID']) & (exp['TILEID'] <= 80872)
+ii |= (80971 <= exp['TILEID']) & (exp['TILEID'] <= 80976)
+exp['SURVEY'][ii] = 'sv1x'
+for pname in ['dark', 'bright', 'backup']:
+    m = (exp['SURVEY'] == 'main') & (exp['PROGRAM'] == pname)
+    exp['SURVEY'][m] = 'main_'+pname
+
+# Double check
+print('PROGRAMs per SURVEY:')
+for survey in np.unique(exp['SURVEY']):
+    ii = exp['SURVEY'] == survey
+    print(survey, np.unique(np.asarray(exp['PROGRAM'][ii])))
+
+print()
+
+descriptions = dict(
+    cmx = "Commissioning",
+    special = "Test Tiles",
+    sv1  = "Target Selection Validation",
+    sv1x = "Secondary Tiles",
+    sv2  = "Operations Development",
+    sv3  = "One-Percent Survey",
+    main_dark = "Main Survey, dark program",
+    main_bright = "Main Survey, bright program",
+    main_backup = "Main Survey, backup program",
+    )
+
+survey_area = dict()
+for survey in descriptions:
+    ii = (exp['SURVEY'] == survey)
+    survey_area[survey] = get_area(exp[ii])
+
+total_area = get_area(exp)
+print(f'Total EDR area covered by any tile: {total_area:.1f}')
+
+print(r"""
+\tablehead{Survey   & Description & Nights & Tiles & Exposures & Effective Hours & Covered Area [deg$^2$] }
+\startdata""")
+
+for survey in np.unique(exp['SURVEY']):
+    ii = exp['SURVEY'] == survey
+    surveyexp = exp[ii]
+
+    first_night = np.min(surveyexp['NIGHT'])
+    last_night = np.max(surveyexp['NIGHT'])
+    num_nights = len(np.unique(surveyexp['NIGHT']))
+    num_tiles = len(np.unique(surveyexp['TILEID']))
+    num_exp = len(surveyexp)
+    efftime_hours = np.sum(surveyexp['EFFTIME_SPEC']) / 3600
+
+    desc = descriptions[survey]
+    area = survey_area[survey]
+
+    # rename sv1x -> sv1 for table printing
+    if survey == 'sv1x':
+        survey = 'sv1'
+    survey = survey.replace('_', '/')
+
+    print(f'{survey:12s} & {desc:30s} & {num_nights:3d} & {num_tiles:5d} & '
+          rf'{num_exp:6d} & {efftime_hours:6.1f} & {area:.0f} \\')
+
+print(r'\enddata')
+
+#- count how many SV3 tiles were observed after the start of the main survey
+postsv = exp['NIGHT'] >= main_start
+postexp = exp[postsv]
+svexp = exp[~postsv]
+
+num_nights = len(set(postexp['NIGHT']))
+num_tiles = len(set(postexp['TILEID']))
+num_exp = len(postexp)
+
+# how many post-SV tiles were new vs. continuations of SV-era?
+post_tiles = np.unique(postexp['TILEID'])
+previously_observed = np.isin(post_tiles, svexp['TILEID'])
+num_previously_observed = np.sum(previously_observed)
+
+print()
+print(f'{num_tiles} tiles observed on {num_nights} nights after the start of the main survey on {main_start}')
+
+print(f'{num_previously_observed} had been previously observed during the primary SV program')
+
+
+#-------------------------------------------------------------------------
+#- Plots
+
+import matplotlib.pyplot as plt
+from datetime import datetime, timedelta
+
+def night_to_date(yearmmdd):
+    n = str(yearmmdd)
+    year = int(n[0:4])
+    month = int(n[4:6])
+    day = int(n[6:8])
+    return datetime(year=year, month=month, day=day)
+
+def date_to_night(date):
+    night = date.year*10000 + date.month*100 + date.day
+    return night
+
+first_night = night_to_date(np.min(exp['NIGHT']))
+last_night = night_to_date(np.max(exp['NIGHT']))
+
+dates = list()
+d = first_night - timedelta(days=1)  # pad date to start with 0 tiles
+while d <= last_night:
+    dates.append(d)
+    d += timedelta(days=1)
+
+dates.append(d)  # pad date to get step plot back to 0
+
+tmp = str(main_start)
+year, month, day = int(tmp[0:4]), int(tmp[4:6]), int(tmp[6:8])
+main_date = datetime(year=year, month=month, day=day) - timedelta(days=0.5)
+
+phases = dict(sv1='sv1 / Target Selection Validation',
+              sv1x='sv1 / Secondary Tiles',
+              sv2='sv2 / Operations Development',
+              sv3='sv3 / One Percent Survey',
+              main_dark='main / dark',
+              main_bright='main / bright',
+              main_backup='main / backup')
+
+colors = dict(sv1='C0', sv2='C2', sv3='C1', sv1x='black', main_dark='gray',
+              main_bright='C3', main_backup='C4')
+alphas = dict(sv1=0.4, sv2=0.8, sv3=0.4, sv1x=0.5, main_dark=0.4,
+              main_bright=0.4, main_backup=0.4)
+
+plt.figure(figsize=(8.5,3))
+
+nexp = dict()
+ntile = dict()
+surveys = list(phases.keys())
+for survey in surveys:
+    thissurvey = (exp['SURVEY'] == survey)
+    nexp[survey] = list()
+    ntile[survey] = list()
+    for d in dates:
+        night = date_to_night(d)
+        ii = thissurvey & (exp['NIGHT'] == night)
+        nexp[survey].append( np.sum(ii) )
+        ntile[survey].append( len(np.unique(exp['TILEID'][ii])) )
+
+#- save data for Zenodo
+data = Table(ntile)
+nights = [x.strftime('%Y-%m-%d') for x in dates]
+data.add_column(nights, index=0, name='night')
+data.write('tiles_per_night.csv', overwrite=True)
+
+bindown = 1
+for survey in ntile:
+    newntile = ntile[survey].copy()
+    remainder = len(newntile) % bindown
+    if remainder != 0:
+        newntile = np.concatenate([newntile, np.zeros(bindown - remainder)])
+    newntile = np.array(newntile).reshape(len(newntile) // bindown, bindown)
+    newntile = np.sum(newntile, axis=1)
+    ntile[survey] = newntile / bindown
+dates = dates[::bindown]
+
+
+#- Plot data for figure 1
+svlines = []
+mainlines = []
+# plt.xticks(rotation=30)
+for survey in surveys:
+    plt.plot(dates, ntile[survey], drawstyle='steps-mid', label=None,
+             color=colors[survey], lw=1)
+    line = plt.fill_between(
+        dates, 0, ntile[survey], step='mid',
+        label=phases[survey], color=colors[survey], alpha=alphas[survey])
+    if 'main' in survey:
+        mainlines.append(line)
+    else:
+        svlines.append(line)
+
+line = plt.axvline(main_date, color='k', alpha=0.5,
+                   label='Start of Main Survey', linestyle='--')
+mainlines.append(line)
+
+plt.xlabel('Night')
+plt.ylabel('Unique Tiles per Night')
+plt.ylim(0,60)
+legend1  = plt.legend(svlines, [x.get_label() for x in svlines], loc='upper left')
+plt.legend(mainlines, [x.get_label() for x in mainlines], loc='upper right')
+plt.tight_layout()
+plt.gca().add_artist(legend1)
+plt.savefig('tiles_per_night.pdf', transparent=True)
+plt.show()
