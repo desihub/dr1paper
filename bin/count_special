@@ -1,0 +1,29 @@
+#!/usr/bin/env python
+
+import os
+import numpy as np
+from astropy.table import Table
+
+
+def count_special_obs(exps):
+    m = exps['SURVEY'] == 'special'
+    flavors = np.unique(exps['FAFLAVOR'][m])
+    print(r'Program & Number of tiles & Number of exposures & '
+          r'Hours of effective time \\')
+    for flavor in flavors:
+        m = exps['FAFLAVOR'] == flavor
+        nexp = np.sum(m)
+        efftime = np.sum(exps['EFFTIME_SPEC'][m]) / 3600
+        ntile = len(np.unique(exps['TILEID'][m]))
+        program = flavor[len('special'):]
+        print(rf'{program:16s} & {ntile:3d} & {nexp:3d} & {efftime:5.1f} \\')
+    for flavor in flavors:
+        m = exps['FAFLAVOR'] == flavor
+        print(flavor, np.unique(exps['TILEID'][m].data))
+
+
+if __name__ == '__main__':
+    expfile = os.path.expandvars(
+       '$DESI_ROOT/spectro/redux/iron/exposures-iron.csv')
+    exps = Table.read(expfile)
+    count_special_obs(exps)
