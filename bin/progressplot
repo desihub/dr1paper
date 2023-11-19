@@ -1,0 +1,211 @@
+#!/usr/bin/env python
+
+import os
+from matplotlib import pyplot as plt
+from astropy.coordinates import SkyCoord
+import numpy as np
+from astropy import units as u
+from astropy.table import Table
+from desiutil import dust
+import matplotlib
+import healpy
+
+
+def paint_map(r, d, dat, rad, weight=None, nside=512):
+    import healpy
+    npix = 12*nside**2
+    vec = healpy.ang2vec(*lb2tp(r, d))
+    map = np.zeros(npix)
+    wmap = np.zeros(npix)
+    if weight is None:
+        weight = np.ones(len(dat), dtype='i4')
+    for v, d, w in zip(vec, dat, weight):
+        pix = healpy.query_disc(nside, v, rad*np.pi/180.)
+        map[pix] += d
+        wmap[pix] += w
+    map = map / (wmap + (wmap == 0))
+    return map, wmap
+
+
+def lb2tp(l, b):
+    return (90.-b)*np.pi/180., l*np.pi/180.
+
+
+def heal2cart(heal, interp=True, return_pts=False):
+    nside = healpy.get_nside(heal)
+    owidth = 8*nside
+    oheight = 4*nside-1
+    dm, rm = np.mgrid[0:oheight, 0:owidth]
+    rm = 360.-(rm+0.5) / float(owidth) * 360.
+    dm = -90. + (dm+0.5) / float(oheight) * 180.
+    t, p = lb2tp(rm.ravel(), dm.ravel())
+    if interp:
+        map = healpy.get_interp_val(heal, t, p)
+    else:
+        pix = healpy.ang2pix(nside, t, p)
+        map = heal[pix]
+    map = map.reshape((oheight, owidth))
+    if return_pts:
+        map = (map, np.sort(np.unique(rm)), np.sort(np.unique(dm)))
+    return map
+
+
+# sorry, hacked out of my personal imshow wrapper...
+def imshow(im, xpts=None, ypts=None, xrange=None, yrange=None, range=None,
+           min=None, max=None, mask_nan=False,
+           interp_healpy=True, log=False, center_gal=False, center_l=None,
+           color=False, contour=None, **kwargs):
+    if xpts is not None and ypts is not None:
+        dx = np.median(xpts[1:]-xpts[:-1])
+        dy = np.median(ypts[1:]-ypts[:-1])
+        kwargs['extent'] = [xpts[0]-dx/2., xpts[-1]+dx/2.,
+                            ypts[0]-dy/2., ypts[-1]+dy/2.]
+        if len(xpts) != im.shape[0] or len(ypts) != im.shape[1]:
+            print('Warning: mismatch between xpts, ypts and im.shape')
+        if not color:
+            im = im.T
+        else:
+            im = np.transpose(im, axes=[1, 0, 2])
+    if 'origin' not in kwargs:
+        kwargs['origin'] = 'lower'
+    if 'aspect' not in kwargs:
+        kwargs['aspect'] = 'auto'
+    if 'interpolation' not in kwargs:
+        kwargs['interpolation'] = 'nearest'
+    if 'cmap' not in kwargs:
+        kwargs['cmap'] = 'binary'
+    if isinstance(kwargs['cmap'], str):
+        from copy import deepcopy
+        kwargs['cmap'] = deepcopy(matplotlib.cm.get_cmap(kwargs['cmap']))
+    oneim = im if not color else im[:, 0]
+    if (len(oneim.shape) == 1) and healpy.isnpixok(len(oneim)):
+        if not color:
+            im = heal2cart(im, interp=interp_healpy)
+        else:
+            outim = None
+            ncolor = im.shape[-1]
+            for i in np.arange(ncolor, dtype='i4'):
+                oneim = heal2cart(im[:, i], interp=interp_healpy)
+                if outim is None:
+                    outim = np.zeros(oneim.shape+(ncolor,))
+                outim[:, :, i] = oneim
+            im = outim
+        if center_gal and center_l is not None:
+            raise ValueError('May only set one of center_gal, center_l')
+        if center_l is None:
+            if not center_gal:
+                center_l = 180
+            else:
+                center_l = 0
+        if center_l == 180:
+            kwargs['extent'] = ((360, 0, -90, 90))
+        else:
+            left_l = (center_l - 180) % 360.
+            # print left_l
+            if not color:
+                im = np.roll(im, np.int((im.shape[1]*left_l)/360), axis=1)
+            else:
+                ncolor = im.shape[-1]
+                for i in np.arange(ncolor, dtype='i4'):
+                    im[:, :, i] = np.roll(
+                        im[:, :, i], np.int(im.shape[1]*left_l/360), axis=1)
+            kwargs['extent'] = (left_l, left_l - 360., -90, 90)
+    if range is not None:
+        if min is not None or max is not None:
+            raise ValueError('Can not set both range and min/max')
+        kwargs['vmin'] = range[0]
+        kwargs['vmax'] = range[1]
+    if min is not None:
+        kwargs['vmin'] = min
+    if max is not None:
+        kwargs['vmax'] = max
+    if log:
+        kwargs['norm'] = matplotlib.colors.LogNorm()
+    if mask_nan and np.all(kwargs['cmap'].get_bad() == 0):
+        kwargs['cmap'].set_bad('lightblue', 0.1)
+    _ = kwargs.pop('updatecolorscale', False)
+    if contour is None:
+        out = plt.imshow(im, **kwargs)
+    else:
+        out = plt.contour(im, levels=contour, **kwargs)
+        plt.xlim(kwargs['extent'][0:2])
+        plt.ylim(kwargs['extent'][2:4])
+    if xrange is not None:
+        plt.xlim(xrange)
+    if yrange is not None:
+        plt.ylim(yrange)
+    return out
+
+
+
+def progress_footprint(tmain, title=None, include_backup=False):
+    if not include_backup:
+        plt.gcf().set_size_inches(7.5, 5.)
+    else:
+        plt.gcf().set_size_inches(7.5, 7.5)
+    plt.subplots_adjust(left=0.1, right=0.95, bottom=0.085, top=0.94,
+                        hspace=0.07)
+    lgal = np.linspace(0, 360, endpoint=True)
+    cgal = SkyCoord(l=lgal*u.deg, b=0*lgal*u.deg, frame='galactic')
+    cecl = SkyCoord(lon=lgal*u.deg, lat=0*lgal*u.deg,
+                    frame='geocentricmeanecliptic')
+    wrapragal = ((cgal.icrs.ra.value+60) % 360)-60
+    wrapraecl = ((cecl.icrs.ra.value+60) % 360)-60
+    decgrid, ragrid = np.meshgrid(np.linspace(-90, 90, 1800),
+                                  np.linspace(-60, 300, 3600))
+    ebvgrid = dust.ebv(ragrid, decgrid, frame='icrs', scaling=1)
+
+    tmain = tmain[tmain['IN_DESI'] != 0]
+    if not include_backup:
+        tmain = tmain[tmain['PROGRAM'] != 'BACKUP']
+
+    mdict = dict(dark=tmain['PROGRAM'] == 'DARK',
+                 bright=tmain['PROGRAM'] == 'BRIGHT')
+    if include_backup:
+        mdict['backup'] = (tmain['PROGRAM'] == 'BACKUP')
+    plt.clf()
+    for i, (name, mprog) in enumerate(mdict.items()):
+        plt.subplot(2 + include_backup, 1, i+1)
+        avg, wt = paint_map(
+            tmain['RA'][mprog], tmain['DEC'][mprog],
+            np.clip(tmain['DONEFRAC'][mprog], 0, 1), 1.6)
+        avg[wt == 0] = np.nan
+        from copy import deepcopy
+        cmap = deepcopy(matplotlib.cm.get_cmap('Greens'))
+        cmap.set_bad('lightgray', 0.7)
+        imshow(avg, center_l=120, cmap=cmap, vmax=1, mask_nan=True)
+        plt.xlim(360-60, -60)
+        s = np.argsort(wrapragal)
+        plt.plot(wrapragal[s], cgal.icrs.dec.value[s], color='gray',
+                 linestyle='--')
+        s = np.argsort(wrapraecl)
+        plt.plot(wrapraecl[s], cecl.icrs.dec.value[s], color='gray',
+                 linestyle=':')
+        plt.ylim(-30, 90)
+        plt.gca().set_aspect('equal')
+        cb = plt.colorbar(fraction=0.05, pad=0.02)
+        cb.set_label(name + ' fraction complete')
+        plt.contour(ragrid[:, 0], decgrid[0, :], ebvgrid.T, levels=[0.3],
+                    colors='gray')
+        plt.text(295, 80, name)
+        plt.gca().xaxis.set_ticks(np.linspace(300, -60, 7))
+        if i == 1 + include_backup:
+            plt.xlabel(r'$\alpha$ ($\degree$)')
+        else:
+            plt.gca().xaxis.set_ticklabels([])
+        plt.ylabel(r'$\delta$ ($\degree$)')
+    if title is None:
+        title = 'Survey completeness through 2022-06-13'
+    plt.suptitle(title)
+    plt.savefig('progress.pdf')
+
+
+if __name__ == '__main__':
+    # pointing to my personal directory for now!  Needs to point to an r1776
+    # check-out of the survey-ops product; this corresponds to 2022-06-14.
+    tmainfn = os.path.expandvars(
+        '$DESI_ROOT/users/schlafly/dr1paper/ops/tiles-main.ecsv')
+    tmain = Table.read(tmainfn)
+    progress_footprint(tmain, title='Completeness through 2022-06-13',
+                       include_backup=True)
+    plt.show()
