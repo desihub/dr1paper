@@ -1,0 +1,160 @@
+#!/usr/bin/env python
+
+"""Plot density of good redshifts on the sky.
+
+source /global/cfs/cdirs/desi/software/desi_environment.sh main
+
+"""
+import os, sys, glob
+import numpy as np
+import matplotlib.pyplot as plt
+import fitsio
+import healpy
+from astropy.table import Table
+
+from desiutil.plots import plot_healpix_map, init_sky
+from desiutil.log import get_logger
+from desitarget.geomask import match_to
+
+from plot_utils import (
+    get_survprogs,
+    get_prod_pix_densities,
+    ar_init_sky,
+    ar_sky_cbar,
+    get_custom_cmaps,
+    plot_skymap,
+)
+
+import argparse
+
+log = get_logger()
+
+
+def parse():
+    p = argparse.ArgumentParser()
+    p.add_argument(
+        "--prod",
+        type=str,
+        default="iron",
+        choices=["iron"],
+        help="spectro. prod (default=iron)",
+    )
+    p.add_argument(
+        "--steps",
+        type=str,
+        default="dens,plot",
+        help="comma-separated list of steps (default=dens,plot)",
+    )
+    p.add_argument("--nside", type=int, default=64, help="HEALPix nside (default=64)")
+    # p.add_argument('--noplot', action='store_true', help="calc densities but don't plot")
+    p.add_argument(
+        "--debug",
+        action="store_true",
+        help="only read 1 percent of the data, and only plot main_dark",
+    )
+    p.add_argument("--overwrite", action="store_true", help="overwrite?")
+
+    args = p.parse_args()
+    for kwargs in args._get_kwargs():
+        print(kwargs)
+
+    for step in args.steps.split(","):
+        assert step in ["dens", "plot"]
+
+    return args
+
+
+def main():
+
+    args = parse()
+
+    pixdens_fn = f"{args.prod}_goodz_density_hpix_nest_nside{args.nside}.ecsv"
+    print(pixdens_fn)
+    outpng_root = f"{args.prod}_goodz_density"
+
+    nside = args.nside
+    npix = healpy.nside2npix(nside)
+
+    # {survey,program}
+    survprogs = get_survprogs(args.prod)
+
+    # - Density per healpix
+    if "dens" in args.steps.split(","):
+
+        if (os.path.isfile(pixdens_fn)) & (~args.overwrite):
+            msg = f"{pixdens_fn} exists and args.overwrite=False"
+            log.error(msg)
+            raise ValueError(msg)
+
+        # - Compute
+        t = get_prod_pix_densities(args.prod, nside, debug=args.debug, verbose=True)
+
+        # - Save density per healpix
+        keep = np.zeros(len(t), dtype=bool)
+        for survey in survprogs:
+            keep |= t[survey] > 0
+        t = t[keep]
+        t.write(pixdens_fn, overwrite=args.overwrite)
+        print(f"Wrote {pixdens_fn}")
+
+    # - Plots
+    if "plot" in args.steps.split(","):
+
+        t = Table.read(pixdens_fn)
+        nside = t.meta["HPXNSIDE"]
+        assert t.meta["HPXNEST"] == True
+
+        #
+        if args.debug:
+            pngnames, keyss, climmlocs = ["main_dark"], [["main_dark"]], [(0, 2000)]
+        else:
+            pngnames = [
+                "premain",
+                "special",
+                "main_backup",
+                "main_bright",
+                "main_dark",
+                "main",
+            ]
+            keyss = [
+                ["cmx", "sv1", "sv2", "sv3"],
+                ["special"],
+                ["main_backup"],
+                ["main_bright"],
+                ["main_dark"],
+                ["main"],
+            ]
+            climmlocs = [
+                (0, 8000, 2000),
+                (0, 5000, 1000),
+                (0, 2000, 500),
+                (0, 2000, 500),
+                (0, 2000, 500),
+                (0, 8000, 2000),
+            ]
+
+        pixs = np.arange(npix, dtype=int)
+        ii = match_to(pixs, t["hpxpixel"])
+        assert np.all(pixs[ii] == t["hpxpixel"])
+
+        cmap_greens, cmap_blues, cmap_oranges = get_custom_cmaps()
+
+        for pngname, keys, climmloc in zip(pngnames, keyss, climmlocs):
+
+            outpng = f"{outpng_root}_{pngname}.png"
+            print(outpng)
+
+            density = np.zeros(npix)
+            density[ii] = 0.0
+            for key in keys:
+                density[ii] += t[key]
+            # set to NaN zero values
+            density[density == 0] = np.NaN
+
+            fig = plt.figure(figsize=(6.0, 5.0), dpi=200)
+            ax = ar_init_sky()
+            plot_skymap(outpng, density, cmap=cmap_greens, climmloc=climmloc)
+
+
+if __name__ == "__main__":
+    main()
