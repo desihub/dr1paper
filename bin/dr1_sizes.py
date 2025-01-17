@@ -95,19 +95,18 @@ def main():
     # List of directories to analyze
     base_dir = "/global/cfs/cdirs/desi/public/dr1"
     directories = [
-        "spectro/data",
+        "spectro",
         "spectro/desi_spectro_calib",
-        "spectro/redux/iron",
         "spectro/redux/iron/exposures",
         "spectro/redux/iron/healpix",
+        "spectro/redux/iron/tiles",
         "spectro/redux/iron/tiles/cumulative",
         "spectro/redux/iron/tiles/pernight",
         "spectro/redux/iron/zcatalog/v1",
-        "spectro/redux/guadalupe",
         "spectro/templates",
         "survey",
-        "target/catalogs",
-        "target/fiberassign",
+        "survey/catalogs/dr1/QSO",
+        "target",
         "vac/dr1"
     ]
     
