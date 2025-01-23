@@ -92,7 +92,7 @@ def get_pix_densities(prod, survey, progs, nside, debug=False):
     pixarea = hp.nside2pixarea(nside, degrees=True)
 
     # read all requested programs
-    zcatdir = os.path.join(os.getenv("DESI_ROOT"), "spectro", "redux", prod, "zcatalog")
+    zcatdir = os.path.join(os.getenv("DESI_ROOT"), "spectro", "redux", prod, "zcatalog", 'v1')
     densities = []
     for prog in progs:
         fn = os.path.join(zcatdir, f"zpix-{survey}-{prog}.fits")
@@ -170,7 +170,9 @@ def get_custom_cmaps():
     cmap_blues = cmap.from_list("Blues2", cmap(np.arange(istart, 256)))
     cmap = plt.get_cmap("Oranges")
     cmap_oranges = cmap.from_list("Orange2", cmap(np.arange(istart, 256)))
-    return cmap_greens, cmap_blues, cmap_oranges
+    cmap = plt.get_cmap("Purples")
+    cmap_reds = cmap.from_list("Purples2", cmap(np.arange(istart, 256)))
+    return cmap_greens, cmap_blues, cmap_oranges, cmap_reds
 
 
 def ar_plot_sky(ax, ras, decs, **kwargs):
@@ -178,10 +180,11 @@ def ar_plot_sky(ax, ras, decs, **kwargs):
     _ = ax.plot(ax.projection_ra(ras[ii]), ax.projection_dec(decs[ii]), **kwargs)
 
 
-def ar_init_sky(gp=True, des=True, nsbound=True, desi=True, ra_center=120):
-    ax = init_sky(
-        galactic_plane_color="none", ecliptic_plane_color="none", ra_center=ra_center
-    )
+def ar_init_sky(gp=True, des=True, nsbound=True, desi=True, ra_center=120, ax=None):
+    if ax is None:
+        ax = init_sky(
+            galactic_plane_color="none", ecliptic_plane_color="none", ra_center=ra_center
+        )
     npt = 1000
     # gp
     if gp:
@@ -254,11 +257,11 @@ def ar_plot_sky_circles(ax, ra_center, dec_center, field_of_view, **kwargs):
 
 
 # adapted from https://github.com/desihub/desiutil/blob/5735fdc34c4e77c7fda84c92c32b9ac41158b8e1/py/desiutil/plots.py#L735-L857
-def ar_sky_cbar(ax, sc, label, extend=None, mloc=None):
+def ar_sky_cbar(ax, sc, label, extend=None, mloc=None, location='top'):
     cbar = plt.colorbar(
         sc,
         ax=ax,
-        location="top",
+        location=location,
         orientation="horizontal",
         spacing="proportional",
         extend=extend,
@@ -273,9 +276,7 @@ def ar_sky_cbar(ax, sc, label, extend=None, mloc=None):
         cbar.ax.xaxis.set_major_locator(MultipleLocator(mloc))
 
 
-# climmloc = (clim[0], clim[1], mloc)
-def plot_skymap(outpng, density, cmap=None, climmloc=None):
-
+def remap_density(density, climmloc):
     # clim, mloc, extend
     if climmloc is None:
         clim = [np.nanmin(density), np.nanmax(density)]
@@ -294,6 +295,13 @@ def plot_skymap(outpng, density, cmap=None, climmloc=None):
         extend = "both"
     density[density < clim[0]] = clim[0]
     density[density > clim[1]] = clim[1]
+    return density, clim, mloc, extend
+
+
+# climmloc = (clim[0], clim[1], mloc)
+def plot_skymap(outpng, density, cmap=None, climmloc=None):
+
+    density, clim, mloc, extend = remap_density(density, climmloc)
 
     fig = plt.figure(figsize=(6.0, 5.0), dpi=200)
     ax = ar_init_sky()
@@ -310,7 +318,7 @@ def plot_skymap(outpng, density, cmap=None, climmloc=None):
         zorder=-1,
     )
     ar_sky_cbar(
-        ax, sc, "Density of confident redshifts [deg$^{-2}$]", mloc=mloc, extend=extend
+        ax, sc, "Surface density of confident redshifts (deg$^{-2}$)", mloc=mloc, extend=extend
     )
     plt.savefig(outpng, bbox_inches="tight")
     plt.close()
