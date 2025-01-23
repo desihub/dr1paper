@@ -11,6 +11,7 @@ import matplotlib.pyplot as plt
 import fitsio
 import healpy
 from astropy.table import Table
+from matplotlib.ticker import MultipleLocator
 
 from desiutil.plots import plot_healpix_map, init_sky
 from desiutil.log import get_logger
@@ -23,6 +24,7 @@ from plot_utils import (
     ar_sky_cbar,
     get_custom_cmaps,
     plot_skymap,
+    remap_density,
 )
 
 import argparse
@@ -104,45 +106,35 @@ def main():
         nside = t.meta["HPXNSIDE"]
         assert t.meta["HPXNEST"] == True
 
-        #
-        if args.debug:
-            pngnames, keyss, climmlocs = ["main_dark"], [["main_dark"]], [(0, 2000)]
-        else:
-            pngnames = [
-                "premain",
-                "special",
-                "main_backup",
-                "main_bright",
-                "main_dark",
-                "main",
-            ]
-            keyss = [
-                ["cmx", "sv1", "sv2", "sv3"],
-                ["special"],
-                ["main_backup"],
-                ["main_bright"],
-                ["main_dark"],
-                ["main"],
-            ]
-            climmlocs = [
-                (0, 8000, 2000),
-                (0, 5000, 1000),
-                (0, 2000, 500),
-                (0, 2000, 500),
-                (0, 2000, 500),
-                (0, 8000, 2000),
-            ]
+        climmlocs = {
+            'sv': (0, 8000, 2000),
+            'special': (0, 5000, 1000),
+            'main_backup': (0, 2000, 500),
+            'main_bright': (0, 2000, 500),
+            'main_dark': (0, 2000, 500),
+            'main': (0, 8000, 2000),
+        }
 
         pixs = np.arange(npix, dtype=int)
         ii = match_to(pixs, t["hpxpixel"])
         assert np.all(pixs[ii] == t["hpxpixel"])
 
-        cmap_greens, cmap_blues, cmap_oranges = get_custom_cmaps()
+        cmap_greens, cmap_blues, cmap_oranges, cmap_reds = get_custom_cmaps()
 
-        for pngname, keys, climmloc in zip(pngnames, keyss, climmlocs):
+        # 4-panel plot showing main bright, dark, backup, and all
+        pngnames = ["main_bright", "main_dark", "main_backup", "sv"]
+        keyss = [["main_bright"], ["main_dark"], ["main_backup"], ["cmx", "sv1", "sv2", "sv3"]]
+        outpng = f"{outpng_root}_4panel.png"
 
-            outpng = f"{outpng_root}_{pngname}.png"
-            print(outpng)
+        ra_center = 120.
+
+        dummy_ras, dummy_decs, dummy_denss = np.array([240]), np.array([0]), np.array([0])
+
+        fig, ax = plt.subplots(2, 2, figsize=(15, 10), dpi=150, 
+                               subplot_kw={'projection': 'mollweide'})
+        for pngname, keys, xx, cmap in zip(pngnames, keyss, ax.flat, 
+                                           [cmap_greens, cmap_blues, cmap_oranges, cmap_reds]):
+            print(f'Building sky map for {pngname}')
 
             density = np.zeros(npix)
             density[ii] = 0.0
@@ -151,9 +143,78 @@ def main():
             # set to NaN zero values
             density[density == 0] = np.NaN
 
-            fig = plt.figure(figsize=(6.0, 5.0), dpi=200)
-            ax = ar_init_sky()
-            plot_skymap(outpng, density, cmap=cmap_greens, climmloc=climmloc)
+            density, clim, mloc, extend = remap_density(density, climmlocs[pngname])
+
+            xx = init_sky(galactic_plane_color="none", ecliptic_plane_color="none", 
+                          ra_center=ra_center, ax=xx)
+
+            # update the tick labels
+            #base_tick_labels = np.array([150, -99, 90, -99, 30, -99, 330, -99, 270, -99, 210])
+            base_tick_labels = np.array([150, 120, 90, 60, 30, 0, 330, 300, 270, 240, 210])
+            base_tick_labels = np.remainder(base_tick_labels+360+ra_center, 360)
+            base_tick_labels[1::2] = -99 # zero-out every other tick
+            tick_labels = [''] * len(base_tick_labels)
+            for il, l in enumerate(base_tick_labels):
+                if l != -99:
+                    tick_labels[il] = f'{l:.0f}°'
+            tick_labels = np.array(tick_labels)
+            labels = xx.get_xticklabels()
+            for l, item in enumerate(labels):
+                item.set_text(tick_labels[l])
+            xx.set_xticklabels(labels, va='bottom')
+
+            # move the tick labels down
+            #import pdb ; pdb.set_trace()
+            xx.tick_params(axis='x', pad=50)
+
+            xx = ar_init_sky(des=False, ax=xx)
+            plot_healpix_map(density, cmap=cmap, nest=True, ax=xx, colorbar=False)
+            xx.set_title(pngname.replace('_', '/').replace('sv', 'survey validation'))
+
+            # for the colorbar, plot some dummy values under the edge
+            # of the DESI contour (hack!)
+            sc = xx.scatter(xx.projection_ra(dummy_ras), xx.projection_dec(dummy_decs),
+                            c=dummy_denss, cmap=cmap, clim=clim, zorder=-1)
+            ar_sky_cbar(xx, sc, 'Density of confident redshifts (deg$^{-2}$)', mloc=mloc, 
+                        extend=extend, location='bottom')
+
+            #if pngname == 'main_bright':
+            #    sc = xx.scatter(xx.projection_ra(dummy_ras), xx.projection_dec(dummy_decs),
+            #                    c=dummy_denss, cmap=cmap, clim=clim, zorder=-1)
+
+        ## now add the colorbar for the whole figure
+        #label = "Surface density of good redshifts (deg$^{-2}$)"
+        #cbar = fig.colorbar(sc, ax=ax, location='right', shrink=0.7, extend=extend,
+        #                    pad=0.02)
+        #                    #spacing="proportional", )#, extendfrac=0.025)#,
+        #                    #pad=0.11, fraction=0.035, aspect=40)
+        #cbar.set_label(label, labelpad=10)
+        #cbar.ax.yaxis.set_major_locator(MultipleLocator(mloc))
+        
+        fig.savefig(outpng, bbox_inches="tight")
+        plt.close()
+        print(f'Wrote {outpng}')
+
+
+        ## individual plots of all programs
+        #pngnames = ["sv", "special", "main_backup", "main_bright",  "main_dark", "main"]
+        #keyss = [["cmx", "sv1", "sv2", "sv3"], ["special"], ["main_backup"],
+        #         ["main_bright"], ["main_dark"], ["main"]]
+        #
+        #for pngname, keys in zip(pngnames, keyss):
+        #    outpng = f"{outpng_root}_{pngname}.png"
+        #
+        #    density = np.zeros(npix)
+        #    density[ii] = 0.0
+        #    for key in keys:
+        #        density[ii] += t[key]
+        #    # set to NaN zero values
+        #    density[density == 0] = np.NaN
+        #
+        #    fig = plt.figure(figsize=(6.0, 5.0), dpi=200)
+        #    ax = ar_init_sky(des=False)
+        #    plot_skymap(outpng, density, cmap=cmap_blues, climmloc=climmlocs[pngname])
+        #    print(f'Wrote {outpng}')
 
 
 if __name__ == "__main__":

@@ -1,7 +1,7 @@
 #!/usr/bin/env python
 
 """
-Count SV observations, broken down by era
+Count DR1 (cmx+sv+main) observations, broken down by era.
 """
 
 import os
@@ -78,11 +78,13 @@ for survey in descriptions:
     survey_area[survey] = get_area(exp[ii])
 
 total_area = get_area(exp)
-print(f'Total EDR area covered by any tile: {total_area:.1f}')
+print(f'Total area covered by any tile: {total_area:.1f}')
 
 print(r"""
-\tablehead{Survey   & Description & Nights & Tiles & Exposures & Effective Hours & Covered Area [deg$^2$] }
-\startdata""")
+\tablehead{ & & No. of & No. of & No. of & Effective Time & Area \\
+Survey & Description & Nights & Tiles & Exposures & (h) & (deg$^2$) }
+\startdata
+""")
 
 for survey in np.unique(exp['SURVEY']):
     ii = exp['SURVEY'] == survey
