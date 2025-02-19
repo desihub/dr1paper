@@ -1,0 +1,82 @@
+#!/usr/bin/env python
+
+"""
+This script documents the statements about the redshift consistency
+between the Guadalupe and Iron productions
+"""
+
+import os
+import numpy as np
+import fitsio
+
+zcatfile1 = os.path.expandvars('$DESI_ROOT/spectro/redux/guadalupe/zcatalog/v1/zall-pix-guadalupe.fits')
+zcatfile2 = os.path.expandvars('$DESI_ROOT/spectro/redux/iron/zcatalog/v1/zall-pix-iron.fits')
+
+print('Reading guadalupe and iron catalogs')
+columns = ['TARGETID', 'SURVEY', 'PROGRAM', 'DESI_TARGET', 'Z',
+           'SPECTYPE', 'ZWARN', 'DELTACHI2', 'ZCAT_PRIMARY']
+zcat1 = fitsio.read(zcatfile1, 'ZCATALOG', columns=columns)
+zcat2 = fitsio.read(zcatfile2, 'ZCATALOG', columns=columns)
+
+#- Compare just main survey (not special) bright/dark (not backup) targets
+#- and also trim to just 
+print('Trimming to targets in common')
+keep = (zcat1['SURVEY'] == 'main')
+keep &= (zcat1['PROGRAM'] == 'dark') | (zcat1['PROGRAM'] == 'bright')
+keep &= zcat1['ZCAT_PRIMARY']
+keep &= zcat1['TARGETID'] > 0  # not stuck fibers
+zcat1 = zcat1[keep]
+
+keep = (zcat2['SURVEY'] == 'main')
+keep &= (zcat2['PROGRAM'] == 'dark') | (zcat2['PROGRAM'] == 'bright')
+keep &= zcat2['ZCAT_PRIMARY']
+keep &= zcat2['TARGETID'] > 0  # not stuck fibers
+zcat2 = zcat2[keep]
+
+keep = np.isin(zcat2['TARGETID'], zcat1['TARGETID'])
+zcat2 = zcat2[keep]
+keep = np.isin(zcat1['TARGETID'], zcat2['TARGETID'])
+zcat1 = zcat1[keep]
+
+#- Sort to same order
+assert len(zcat1) == len(zcat2)
+assert np.all(np.isin(zcat1['TARGETID'], zcat2['TARGETID']))
+assert np.all(np.isin(zcat2['TARGETID'], zcat1['TARGETID']))
+
+if np.any(zcat1['TARGETID'] != zcat2['TARGETID']):
+    ii = np.argsort(zcat1['TARGETID'])
+    zcat1 = zcat1[ii]
+    ii = np.argsort(zcat2['TARGETID'])
+    zcat2 = zcat2[ii]
+
+assert np.all(zcat1['TARGETID'] == zcat2['TARGETID'])
+
+#- Good targets in Guadalupe
+good1 = (zcat1['ZWARN']==0) & (zcat1['DELTACHI2']>25)
+good2 = (zcat2['ZWARN']==0) & (zcat2['DELTACHI2']>25)
+
+changed_status = good1 & ~good2
+pchange = 100*np.sum(changed_status) / len(changed_status)
+
+print(f'{pchange:.2f}% changed from good to bad redshifts')
+
+dv = 3e5*(zcat1['Z'] - zcat2['Z'])/(1 + zcat1['Z'])
+big_dv = good1 & (np.abs(dv)>1000)
+pbig_dv = 100*np.sum(big_dv) / len(big_dv)
+print(f'{pbig_dv:.2f}% good z changed by more than 1000 km/s')
+
+either = changed_status | big_dv
+peither = 100*np.sum(either) / len(either)
+print(f'{peither:.2f}% changed z or status')
+
+#- robust sigma(dv)
+nmad_dv = 1.4826 * np.median(np.abs(dv[good1] - np.median(dv[good1])))
+print(f'{nmad_dv:.3f} km/s sigma(dv) for good redshifts')
+print(f'{np.median(dv[good1]):.3f} km/s median offset')
+
+
+
+
+
+
+
