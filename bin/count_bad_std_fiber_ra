@@ -1,0 +1,57 @@
+#!/usr/bin/env python
+
+"""
+This mini-script counts the reported fraction of targets that have
+bad STD_FIBER_RA due to a cos(dec) but reported in
+https://github.com/desihub/desispec/issues/2055 and fixed in
+https://github.com/desihub/desispec/pull/2065
+
+NOTES:
+  - This is fixed in zcatalog/v1, but not in the FIBERMAP HDUs of the underlying
+    coadd and redrock files.
+  - This impacts the computed standard deviation of the FIBER_RAs on targets observed
+    on multiple nights.  The underlying individual FIBER_RA are fine.
+"""
+
+import os
+import numpy as np
+from astropy.table import Table
+import fitsio
+
+# the bug only impacts targets on tiles observed on more than one night
+print('Comparing tiles with exposures spanning multiple nights')
+exps = Table.read(os.path.expandvars('$DESI_ROOT/spectro/redux/iron/exposures-iron.csv'))
+
+num_ok = 0
+num_bad = 0
+
+for tileid in np.unique(exps['TILEID']):
+    ii = exps['TILEID'] == tileid
+    nights = np.unique(exps['NIGHT'][ii])
+    if len(nights) == 1 or (nights[0] == nights[-1]):
+        num_ok += 1
+    else:
+        num_bad += 1
+
+num_tot = num_ok + num_bad
+percent_bad = 100 * num_bad / num_tot
+
+print(f'{num_bad}/{num_tot} = {percent_bad:.1f}% tiles impacted by STD_FIBER_RA cos(dec) bug')
+
+# alternate check: compare v0 and v1 of iron
+print('Comparing iron/zcatalog/v0/zall-pix-iron.fits to iron/zcatalog/v1')
+columns = ('TARGETID', 'STD_FIBER_RA')
+zcatv0 = fitsio.read(os.path.expandvars('$DESI_ROOT/spectro/redux/iron/zcatalog/v0/zall-pix-iron.fits'), 'ZCATALOG', columns=columns)
+zcatv1 = fitsio.read(os.path.expandvars('$DESI_ROOT/spectro/redux/iron/zcatalog/v1/zall-pix-iron.fits'), 'ZCATALOG', columns=columns)
+
+#- Sort by TARGETID
+isort0 = np.argsort(zcatv0['TARGETID'])
+isort1 = np.argsort(zcatv1['TARGETID'])
+
+#- Compare how many mismatch
+mismatch = ~np.isclose(zcatv0['STD_FIBER_RA'][isort0], zcatv1['STD_FIBER_RA'][isort1])
+num_mismatch = np.sum(mismatch)
+percent_mismatch = 100 * num_mismatch / len(zcatv0)
+print(f'{num_mismatch}/{len(zcatv0)} = {percent_mismatch:0.1f}% STD_FIBER_RA mismatch')
+
+
