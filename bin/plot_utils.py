@@ -322,3 +322,60 @@ def plot_skymap(outpng, density, cmap=None, climmloc=None):
     )
     plt.savefig(outpng, bbox_inches="tight")
     plt.close()
+
+# AR a bit hacky and not fully tested, but works so far..
+def custom_plot_sky_line(ax, ras, decs, **kwargs):
+
+    sepmax_deg = 1
+
+    ras, decs = np.atleast_1d(ras), np.atleast_1d(decs)
+    ra_center = ax._ra_center
+    proj_edge = ra_center - 180
+    while proj_edge < 0:
+        proj_edge += 360
+    cs = SkyCoord(ra=ras * units.deg, dec=decs * units.deg, frame="icrs")
+    dcs = np.concatenate(
+        (
+            cs[1:].separation(cs[:-1]).to(units.deg).value,
+            [cs[-1].separation(cs[0]).to(units.deg).value],
+        )
+    )
+    if dcs.max() < sepmax_deg:
+        sels = [np.ones(len(ras), dtype=bool)]
+    else:
+        sels = [
+            (ras < ra_center) | (ras > proj_edge),
+            (ras > ra_center) & (ras < proj_edge),
+        ]
+    for sel in sels:
+        if sel.sum() == 0:
+            continue
+        tmpras, tmpdecs = ras[sel].copy(), decs[sel].copy()
+        tmpcs = SkyCoord(ra=tmpras * units.deg, dec=tmpdecs * units.deg, frame="icrs")
+        dcs = np.concatenate(
+            (
+                tmpcs[1:].separation(tmpcs[:-1]).to(units.deg).value,
+                [tmpcs[-1].separation(tmpcs[0]).to(units.deg).value],
+            )
+        )
+        if dcs.max() > sepmax_deg:
+            i = dcs.argmax()
+            tmpras, tmpdecs = np.roll(tmpras, -i - 1), np.roll(tmpdecs, -i - 1)
+        ax.plot(ax.projection_ra(tmpras), ax.projection_dec(tmpdecs), **kwargs)
+
+
+def plot_desi_bounds(ax, bound_prog, **kwargs):
+    assert bound_prog in ["BACKUP", "BRIGHT4PASS", "BRIGHT", "DARK"]
+    fn = os.path.join(
+        os.getenv("DESI_ROOT"),
+        "users",
+        "raichoor",
+        "footprints",
+        "desi-boundaries.ecsv",
+    )
+    d = Table.read(fn)
+    d["RA"][d["RA"] < 0] += 360
+    d = d[d["PROGRAM"] == bound_prog]
+    for cap in np.unique(d["CAP"]):
+        sel = d["CAP"] == cap
+        custom_plot_sky_line(ax, d["RA"][sel], d["DEC"][sel], **kwargs)
