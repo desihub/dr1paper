@@ -2,8 +2,8 @@
 
 """
 Count DR1 (cmx+sv+main) observations, broken down by era.
-"""
 
+"""
 import os
 from astropy.table import Table
 import numpy as np
@@ -43,11 +43,12 @@ exp = Table.read(expfile)
 surveynames = exp['SURVEY'].copy()
 exp['SURVEY'] = np.zeros(len(exp), dtype='U20')  # don't truncate names
 exp['SURVEY'][:] = surveynames
-#- special case for sv1 dedicated secondary tiles;
-#- rename their survey to "sv1x"
-ii = (80862 <= exp['TILEID']) & (exp['TILEID'] <= 80872)
-ii |= (80971 <= exp['TILEID']) & (exp['TILEID'] <= 80976)
-exp['SURVEY'][ii] = 'sv1x'
+##- special case for sv1 dedicated secondary tiles;
+##- rename their survey to "sv1x"
+#ii = (80862 <= exp['TILEID']) & (exp['TILEID'] <= 80872)
+#ii |= (80971 <= exp['TILEID']) & (exp['TILEID'] <= 80976)
+#exp['SURVEY'][ii] = 'sv1x'
+
 for pname in ['dark', 'bright', 'backup']:
     m = (exp['SURVEY'] == 'main') & (exp['PROGRAM'] == pname)
     exp['SURVEY'][m] = 'main_'+pname
@@ -64,7 +65,7 @@ descriptions = dict(
     cmx = "Commissioning",
     special = "Test Tiles",
     sv1  = "Target Selection Validation",
-    sv1x = "Secondary Tiles",
+    #sv1x = "Secondary Tiles",
     sv2  = "Operations Development",
     sv3  = "One-Percent Survey",
     main_dark = "Main Survey, dark program",
@@ -81,11 +82,10 @@ total_area = get_area(exp)
 print(f'Total area covered by any tile: {total_area:.1f}')
 
 print(r"""
-\tablehead{ & & No. of & No. of & No. of & Effective Time & Area \\
-Survey & Description & Nights & Tiles & Exposures & (h) & (deg$^2$) }
+\tablehead{ & No. of & No. of & No. of & Effective Time & Area \\
+Program & Nights & Tiles & Exposures & (h) & (deg$^2$) }
 \startdata
 """)
-
 for survey in np.unique(exp['SURVEY']):
     ii = exp['SURVEY'] == survey
     surveyexp = exp[ii]
@@ -105,7 +105,7 @@ for survey in np.unique(exp['SURVEY']):
         survey = 'sv1'
     survey = survey.replace('_', '/')
 
-    print(f'{survey:12s} & {desc:30s} & {num_nights:3d} & {num_tiles:5d} & '
+    print(f'{survey:12s} & {num_nights:3d} & {num_tiles:5d} & '
           rf'{num_exp:6d} & {efftime_hours:6.1f} & {area:.0f} \\')
 
 print(r'\enddata')
@@ -163,7 +163,7 @@ year, month, day = int(tmp[0:4]), int(tmp[4:6]), int(tmp[6:8])
 main_date = datetime(year=year, month=month, day=day) - timedelta(days=0.5)
 
 phases = dict(sv1='sv1 / Target Selection Validation',
-              sv1x='sv1 / Secondary Tiles',
+              #sv1x='sv1 / Secondary Tiles',
               sv2='sv2 / Operations Development',
               sv3='sv3 / One Percent Survey',
               main_dark='main / dark',
