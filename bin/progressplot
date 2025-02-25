@@ -111,7 +111,7 @@ def progress_footprint(tmain):
             ax.text(ax.projection_ra(np.array([tmpra])), ax.projection_dec(np.array([1.2])), txt, color="k", ha="center", va="bottom")
 
         # save
-        plt.savefig('/global/cfs/cdirs/desi/users/raichoor/papers_material/dr1_material/progress-{}.png'.format(name), bbox_inches='tight')
+        plt.savefig('progress-{}.png'.format(name), bbox_inches='tight')
         plt.close()
 
 
