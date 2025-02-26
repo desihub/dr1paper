@@ -324,11 +324,10 @@ def plot_skymap(outpng, density, cmap=None, climmloc=None):
     plt.close()
 
 # AR a bit hacky and not fully tested, but works so far..
-def custom_plot_sky_line(ax, ras, decs, **kwargs):
-
-    sepmax_deg = 1
+def custom_plot_sky_line(ax, ras, decs, sepmax_deg, **kwargs):
 
     ras, decs = np.atleast_1d(ras), np.atleast_1d(decs)
+
     ra_center = ax._ra_center
     proj_edge = ra_center - 180
     while proj_edge < 0:
@@ -376,6 +375,10 @@ def plot_desi_bounds(ax, bound_prog, **kwargs):
     d = Table.read(fn)
     d["RA"][d["RA"] < 0] += 360
     d = d[d["PROGRAM"] == bound_prog]
+    if bound_prog == "BACKUP":
+        sepmax_deg = 1.
+    else:
+        sepmax_deg = 5.
     for cap in np.unique(d["CAP"]):
         sel = d["CAP"] == cap
-        custom_plot_sky_line(ax, d["RA"][sel], d["DEC"][sel], **kwargs)
+        custom_plot_sky_line(ax, d["RA"][sel], d["DEC"][sel], sepmax_deg, **kwargs)
