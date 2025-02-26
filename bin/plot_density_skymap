@@ -3,6 +3,7 @@
 """Plot density of good redshifts on the sky.
 
 source /global/cfs/cdirs/desi/software/desi_environment.sh main
+plot_density_skymap --steps=plot --overwrite
 
 """
 import os, sys, glob
@@ -186,7 +187,7 @@ def main():
             xx.grid(lw=0.25)
             xx.set_axisbelow(True)
             plot_healpix_map(density, cmap=cmap, nest=True, ax=xx, colorbar=False)
-            xx.set_title(pngname.replace('_', '/').replace('sv', 'survey validation'))
+            xx.set_title(pngname.replace('_', '/').replace('sv', 'survey validation').title())
 
             # desi boundaries
             # use main/dark for sv
@@ -200,7 +201,7 @@ def main():
             # of the DESI contour (hack!)
             sc = xx.scatter(xx.projection_ra(dummy_ras), xx.projection_dec(dummy_decs),
                             c=dummy_denss, cmap=cmap, clim=clim, zorder=-1)
-            ar_sky_cbar(xx, sc, 'Density of confident redshifts (deg$^{-2}$)', mloc=mloc, 
+            ar_sky_cbar(xx, sc, 'Density of Confident Redshifts (deg$^{-2}$)', mloc=mloc, 
                         extend=extend, location='bottom')
 
             #if pngname == 'main_bright':

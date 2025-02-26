@@ -162,13 +162,20 @@ tmp = str(main_start)
 year, month, day = int(tmp[0:4]), int(tmp[4:6]), int(tmp[6:8])
 main_date = datetime(year=year, month=month, day=day) - timedelta(days=0.5)
 
-phases = dict(sv1='sv1 / Target Selection Validation',
+phases = dict(sv1='SV1',
               #sv1x='sv1 / Secondary Tiles',
-              sv2='sv2 / Operations Development',
-              sv3='sv3 / One Percent Survey',
-              main_dark='main / dark',
-              main_bright='main / bright',
-              main_backup='main / backup')
+              sv2='SV2',
+              sv3='SV3',
+              main_bright='Main / Bright',
+              main_dark='Main / Dark',
+              main_backup='Main / Backup')
+#phases = dict(sv1='sv1 / Target Selection Validation',
+#              #sv1x='sv1 / Secondary Tiles',
+#              sv2='sv2 / Operations Development',
+#              sv3='sv3 / One Percent Survey',
+#              main_dark='main / dark',
+#              main_bright='main / bright',
+#              main_backup='main / backup')
 
 colors = dict(sv1='C0', sv2='C2', sv3='C1', sv1x='black', main_dark='gray',
               main_bright='C3', main_backup='C4')
@@ -234,5 +241,6 @@ legend1  = plt.legend(svlines, [x.get_label() for x in svlines], loc='upper left
 plt.legend(mainlines, [x.get_label() for x in mainlines], loc='upper right')
 plt.tight_layout()
 plt.gca().add_artist(legend1)
-plt.savefig('tiles_per_night.pdf', transparent=True)
+plt.savefig('tiles_per_night.png')
+#plt.savefig('tiles_per_night.pdf', transparent=True)
 plt.show()

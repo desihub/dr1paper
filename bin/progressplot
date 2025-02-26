@@ -58,7 +58,7 @@ def progress_footprint(tmain):
     cmaps = [plt.get_cmap("Greens"), plt.get_cmap("Blues"), plt.get_cmap("Oranges")]
 
     # loop on programs
-    fig, allax = plt.subplots(3, 1, figsize=(7, 11), dpi=150,
+    fig, allax = plt.subplots(3, 1, figsize=(7, 9), dpi=150,
                               layout='constrained',
                               subplot_kw={'projection': 'mollweide'})
     for i, (name, mprog) in enumerate(mdict.items()):
@@ -101,7 +101,8 @@ def progress_footprint(tmain):
         avg[wt == 0] = np.nan
         plot_healpix_map(avg, cmap=cmaps[i], nest=False, ax=ax, colorbar=False)
         cbar = plt.colorbar(ax.collections[3], ax=ax, orientation='vertical',
-                            spacing='proportional', pad=0.11, fraction=0.1, aspect=40)
+                            spacing='proportional', pad=0.05, shrink=0.8, fraction=0.1, 
+                            aspect=20)
         cbar.set_label(f'{name.capitalize()} Completeness')
         #ax.set_title(name.capitalize())
 
