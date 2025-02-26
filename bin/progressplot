@@ -8,10 +8,10 @@ from astropy import units as u
 from astropy.table import Table
 from desiutil import dust
 from desiutil.plots import plot_healpix_map, init_sky
-from plot_utils import ar_init_sky, ar_plot_sky, plot_desi_bounds
+from plot_utils import ar_init_sky, ar_plot_sky, plot_desi_bounds, ar_sky_cbar
 import matplotlib
 import healpy
-
+from mpl_toolkits.axes_grid1 import make_axes_locatable
 
 def paint_map(r, d, dat, rad, weight=None, nside=512):
     import healpy
@@ -50,21 +50,26 @@ def progress_footprint(tmain):
     # tiles
     tmain = tmain[tmain['IN_DESI'] != 0]
     mdict = {
-        'dark' : tmain['PROGRAM'] == 'DARK',
         'bright' : tmain['PROGRAM'] == 'BRIGHT',
+        'dark' : tmain['PROGRAM'] == 'DARK',
         'backup' : tmain['PROGRAM'] == 'BACKUP',
     }
 
     # loop on programs
+    fig, allax = plt.subplots(3, 1, figsize=(7, 12), dpi=150,
+                              layout='constrained',
+                              subplot_kw={'projection': 'mollweide'})
     for i, (name, mprog) in enumerate(mdict.items()):
 
         print(name)
+        #mprog = np.where(mprog)[0][:3]
 
         # initialize figure
-        fig = plt.figure(figsize=(10, 5), dpi=150)
-        ax = fig.add_subplot(111, projection='mollweide')
+        #fig = plt.figure(figsize=(10, 5), dpi=150)
+        #ax = fig.add_subplot(111, projection='mollweide')
+        ax = allax[i]
         ax = init_sky(galactic_plane_color="none", ecliptic_plane_color="none", ax=ax)
-        ax = ar_init_sky(des=False, desi=False, ax=ax)
+        ax = ar_init_sky(nsbound=False, des=False, desi=False, ax=ax)
         ax.grid(lw=0.25)
         ax.set_axisbelow(True)
 
@@ -78,7 +83,7 @@ def progress_footprint(tmain):
             ax.projection_dec(ebv_decs),
             c=ebv_vals,
             s=1,
-            alpha=0.05,
+            alpha=0.02,
             cmap=matplotlib.cm.gray_r,
             vmin=0,
             vmax=1,
@@ -86,16 +91,20 @@ def progress_footprint(tmain):
         )
 
         # completeness
+        if i == 2:
+            colorbar = True
+        else:
+            colorbar = False
+
         avg, wt = paint_map(
             tmain['RA'][mprog], tmain['DEC'][mprog],
             np.clip(tmain['DONEFRAC'][mprog], 0, 1),
             1.6, nside=128
         )
         avg[wt == 0] = np.nan
-        plot_healpix_map(
-            avg, cmap=matplotlib.cm.get_cmap('Greens'), nest=False, ax=ax, colorbar=True,
-            label='{} fraction completeness through 2022-06-13'.format(name.capitalize())
-        )
+        plot_healpix_map(avg, cmap=matplotlib.colormaps['Reds'], nest=False, ax=ax, 
+                         colorbar=colorbar, label='Completeness')
+        ax.set_title(name.capitalize())
 
         # desi boundaries
         plot_desi_bounds(ax, name.upper(), color="k", lw=2)
@@ -110,9 +119,14 @@ def progress_footprint(tmain):
                 tmpra = ra
             ax.text(ax.projection_ra(np.array([tmpra])), ax.projection_dec(np.array([1.2])), txt, color="k", ha="center", va="bottom")
 
-        # save
-        plt.savefig('progress-{}.png'.format(name), bbox_inches='tight')
-        plt.close()
+        ## save
+        #plt.savefig('progress-{}.png'.format(name), bbox_inches='tight')
+        #plt.close()
+
+    outpng = 'progress.png'
+    fig.savefig(outpng, bbox_inches="tight")
+    plt.close()
+    print(f'Wrote {outpng}')
 
 
 if __name__ == '__main__':
