@@ -55,8 +55,10 @@ def progress_footprint(tmain):
         'backup' : tmain['PROGRAM'] == 'BACKUP',
     }
 
+    cmaps = [plt.get_cmap("Greens"), plt.get_cmap("Blues"), plt.get_cmap("Oranges")]
+
     # loop on programs
-    fig, allax = plt.subplots(3, 1, figsize=(7, 12), dpi=150,
+    fig, allax = plt.subplots(3, 1, figsize=(7, 11), dpi=150,
                               layout='constrained',
                               subplot_kw={'projection': 'mollweide'})
     for i, (name, mprog) in enumerate(mdict.items()):
@@ -91,20 +93,17 @@ def progress_footprint(tmain):
         )
 
         # completeness
-        if i == 2:
-            colorbar = True
-        else:
-            colorbar = False
-
         avg, wt = paint_map(
             tmain['RA'][mprog], tmain['DEC'][mprog],
             np.clip(tmain['DONEFRAC'][mprog], 0, 1),
             1.6, nside=128
         )
         avg[wt == 0] = np.nan
-        plot_healpix_map(avg, cmap=matplotlib.colormaps['Reds'], nest=False, ax=ax, 
-                         colorbar=colorbar, label='Completeness')
-        ax.set_title(name.capitalize())
+        plot_healpix_map(avg, cmap=cmaps[i], nest=False, ax=ax, colorbar=False)
+        cbar = plt.colorbar(ax.collections[3], ax=ax, orientation='vertical',
+                            spacing='proportional', pad=0.11, fraction=0.1, aspect=40)
+        cbar.set_label(f'{name.capitalize()} Completeness')
+        #ax.set_title(name.capitalize())
 
         # desi boundaries
         plot_desi_bounds(ax, name.upper(), color="k", lw=2)
