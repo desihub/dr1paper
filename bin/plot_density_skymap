@@ -25,6 +25,7 @@ from plot_utils import (
     get_custom_cmaps,
     plot_skymap,
     remap_density,
+    plot_desi_bounds,
 )
 
 import argparse
@@ -147,8 +148,10 @@ def main():
 
             xx = init_sky(galactic_plane_color="none", ecliptic_plane_color="none", 
                           ra_center=ra_center, ax=xx)
+            ar_init_sky(des=False, desi=False, ax=xx)
 
             # update the tick labels
+            """
             #base_tick_labels = np.array([150, -99, 90, -99, 30, -99, 330, -99, 270, -99, 210])
             base_tick_labels = np.array([150, 120, 90, 60, 30, 0, 330, 300, 270, 240, 210])
             base_tick_labels = np.remainder(base_tick_labels+360+ra_center, 360)
@@ -166,10 +169,32 @@ def main():
             # move the tick labels down
             #import pdb ; pdb.set_trace()
             xx.tick_params(axis='x', pad=50)
+            """
 
-            xx = ar_init_sky(des=False, ax=xx)
+            # re-print ra labels... (rellay not nice!)
+            xx.set_xticklabels([])
+            ras = np.array([180, 150, 120, 90, 60, 30, 0, 330, 270, 240, 210])
+            txts = np.array(['{0}°'.format(ra) for ra in ras])
+            for ra, txt in zip(ras, txts):
+                if ra == 60:
+                    tmpra = 59.8
+                else:
+                    tmpra = ra
+                xx.text(xx.projection_ra(np.array([tmpra])), xx.projection_dec(np.array([1.2])), txt, color="k", ha="center", va="bottom")
+
+            #xx = ar_init_sky(des=False, ax=xx)
+            xx.grid(lw=0.25)
+            xx.set_axisbelow(True)
             plot_healpix_map(density, cmap=cmap, nest=True, ax=xx, colorbar=False)
             xx.set_title(pngname.replace('_', '/').replace('sv', 'survey validation'))
+
+            # desi boundaries
+            # use main/dark for sv
+            if pngname == "sv":
+                prog = "DARK"
+            else:
+                prog = pngname.split("_")[1].upper()
+            plot_desi_bounds(xx, prog, color="k", lw=2)
 
             # for the colorbar, plot some dummy values under the edge
             # of the DESI contour (hack!)
