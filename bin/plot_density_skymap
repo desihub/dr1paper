@@ -149,7 +149,7 @@ def main():
 
             xx = init_sky(galactic_plane_color="none", ecliptic_plane_color="none", 
                           ra_center=ra_center, ax=xx)
-            ar_init_sky(des=False, desi=False, ax=xx)
+            ar_init_sky(des=False, desi=False, ax=xx, nsbound=False)
 
             # update the tick labels
             """
