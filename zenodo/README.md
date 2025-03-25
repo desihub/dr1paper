@@ -11,6 +11,19 @@ https://github.com/desihub/dr1paper. For convenience and for all but
 the first two figures in the paper (see below), we also provide the
 processed data points used to generate these figures.
 
+## Figures 1 & 2: 
+
+**Data file**: 
+
+**Code**: 
+
+
+## Figure 3: 
+
+**Data file**: 
+
+**Code**: 
+
 
 ## Figure 4: number of unique tiles per night
 
@@ -18,5 +31,27 @@ processed data points used to generate these figures.
   night,sv1,sv2,sv3,special,main_bright,main_dark,main_backup
 
 **Code**: `bin/count_obs`
+
+
+## Figure 5: 
+
+**Data file**: 
+
+**Code**: 
+
+
+## Figure 6: 
+
+**Data file**: 
+
+**Code**: 
+
+
+## Figure 7: 
+
+**Data file**: 
+
+**Code**: 
+
 
 
