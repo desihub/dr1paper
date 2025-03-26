@@ -32,19 +32,14 @@ def get_desfoot_fn():
 
 
 def get_desi14kfoot_fn():
-    return os.path.join(
-        os.getenv("DESI_ROOT"),
-        "users",
-        "raichoor",
-        "desi-14k-footprint",
-        "desi-14k-footprint-dark.ecsv",
-    )
+    P = 'desi-14k-footprint-dark.ecsv'
+    #P = os.path.join(os.getenv("DESI_ROOT"), "users", "raichoor", "desi-14k-footprint", "desi-14k-footprint-dark.ecsv")
+    return P
 
 
 def get_survprogs(prod):
-    fn = os.path.join(
-        os.getenv("DESI_ROOT"), "spectro", "redux", prod, f"tiles-{prod}.csv"
-    )
+    fn = f'/global/cfs/cdirs/desi/public/dr1/spectro/redux/{prod}/tiles-{prod}.csv'
+    #fn = os.path.join(os.getenv("DESI_ROOT"), "spectro", "redux", prod, f"tiles-{prod}.csv")
     d = Table.read(fn)
     survprogs = {}
     for survey in np.unique(d["SURVEY"]):
