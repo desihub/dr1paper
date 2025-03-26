@@ -209,13 +209,9 @@ def main(exp, main_start=20210514, overwrite=False):
         data.write(zenodofile, overwrite=True)
         print(f'Wrote {zenodofile}')
 
-    
-    print(f'Read {zenodofile}')
-        
-    #print(f'Skipping existing Zenodo file {zenodofile}')
-        
+
     # generate the figure
-    pngfile = 'figures/tiles_per_night.png'
+    pngfile = 'figures/tiles-per-night.png'
 
     colors = dict(sv1='C0', sv2='C2', sv3='C1', main_dark='gray', 
                   main_bright='C3', main_backup='C4')
@@ -260,10 +256,14 @@ def main(exp, main_start=20210514, overwrite=False):
     plt.tight_layout()
     plt.gca().add_artist(legend1)
     plt.savefig(pngfile)
+    plt.close()
     print(f'Wrote {pngfile}')
 
 
 if __name__ == '__main__':
+    """Main routine.
+
+    """
     import argparse
     p = argparse.ArgumentParser()
     p.add_argument("--overwrite", action="store_true", help="overwrite existing zenodo files?")

@@ -1,6 +1,8 @@
 #!/usr/bin/env python
 
+"""Plotting support routines.
 
+"""
 import os
 import sys
 import fitsio
@@ -22,7 +24,6 @@ from astropy.coordinates import SkyCoord
 
 
 nest = True
-
 
 def get_desfoot_fn():
     return os.path.join(
