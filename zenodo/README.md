@@ -29,9 +29,10 @@ Way Survey catalogs.
 
 ## Figure 3: 
 
-**Data files**: `zenodo/bright_completeness.csv`,
-  `zenodo/dark_completeness.csv`, and `zenodo/backup_completeness.csv`
-  with columns `healpix_number,completeness`
+**Data files**:
+  * `zenodo/bright_completeness.csv` with columns `healpix_number,completeness`
+  * `zenodo/dark_completeness.csv` with columns `healpix_number,completeness`
+  * `zenodo/backup_completeness.csv` with columns `healpix_number,completeness`
 
 **Code**: `bin/progressplot`
 
@@ -46,20 +47,27 @@ Way Survey catalogs.
 
 ## Figure 5: 
 
-**Data file**: 
+**Data files**:
+  * `zenodo/bright_density.csv` with columns `healpix_number,density`
+  * `zenodo/dark_density.csv` with columns `healpix_number,density`
+  * `zenodo/backup_density.csv` with columns `healpix_number,density`
+  * `zenodo/sv_density.csv` with columns `healpix_number,density`
 
-**Code**: 
+**Code**: `bin/plot_density_skymap`
 
 
 ## Figure 6: 
 
 **Data files**:
   * `zenodo/nofz_GALAXY.csv` with columns `ZBIN,ALL,ELG,LRG,BGS`
-  * `zenodo/nofz_QSO.csv` with columns `ZBIN,ALL,QSO'
-  * `zenodo/nofv_STAR.csv` with columns `VBIN,ALL,MWS'
+  * `zenodo/nofz_QSO.csv` with columns `ZBIN,ALL,QSO`
+  * `zenodo/nofv_STAR.csv` with columns `VBIN,ALL,MWS`
 
 **Code**: `nb/count-dr1-targets.ipynb`
 
 ## Figure 7: 
+
+This figure was generated using Astro Data Lab tools (see the notebook
+for details).
 
 **Code**: `nb/desi_dr1_stacked_spectra_fig7.ipynb`
