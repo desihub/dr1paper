@@ -1,4 +1,7 @@
-# Data Release 1
+# DESI Data Release 1
 
-Repository for documentation and scripts used in the writing of the DESI Data
-Release 1 Paper.
+Repository for scripts, notebooks, and data files used in the writing
+of the DESI Data Release 1 paper, https://arxiv.org/abs/2503.14745.
+
+For additional details please see
+https://data.desi.lbl.gov/doc/releases/dr1.

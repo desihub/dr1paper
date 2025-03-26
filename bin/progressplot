@@ -1,17 +1,31 @@
 #!/usr/bin/env python
 
+"""Code to generate Figure 3 (completeness in the bright, dark, and
+backup programs as a function of sky position) in the DR1 paper.
+
+source /global/cfs/cdirs/desi/software/desi_environment.sh 25.3
+python bin/progressplot
+
+"""
 import os
-from matplotlib import pyplot as plt
-from astropy.coordinates import SkyCoord
 import numpy as np
+import healpy
+import matplotlib
+from matplotlib import pyplot as plt
+from astropy.io import ascii
+from astropy.coordinates import SkyCoord
 from astropy import units as u
 from astropy.table import Table
+
 from desiutil import dust
 from desiutil.plots import plot_healpix_map, init_sky
+
 from plot_utils import ar_init_sky, ar_plot_sky, plot_desi_bounds, ar_sky_cbar
-import matplotlib
-import healpy
-from mpl_toolkits.axes_grid1 import make_axes_locatable
+
+
+def lb2tp(l, b):
+    return (90.-b)*np.pi/180., l*np.pi/180.
+
 
 def paint_map(r, d, dat, rad, weight=None, nside=512):
     import healpy
@@ -29,11 +43,17 @@ def paint_map(r, d, dat, rad, weight=None, nside=512):
     return map, wmap
 
 
-def lb2tp(l, b):
-    return (90.-b)*np.pi/180., l*np.pi/180.
+def progress_footprint(tmain, nside=128, overwrite=False):
 
+    npix = healpy.nside2npix(nside)
+    all_hpx = np.arange(npix)
 
-def progress_footprint(tmain):
+    # tiles
+    tmain = tmain[tmain['IN_DESI'] != 0]
+    mdict = {'bright' : tmain['PROGRAM'] == 'BRIGHT',
+             'dark' : tmain['PROGRAM'] == 'DARK',
+             'backup' : tmain['PROGRAM'] == 'BACKUP',
+             }
 
     # ecliptic
     lgal = np.linspace(0, 360, endpoint=True)
@@ -42,18 +62,10 @@ def progress_footprint(tmain):
                     frame='geocentricmeanecliptic')
 
     # ebv
-    ebv_nside, ebv_nest = 128, True
+    ebv_nside, ebv_nest = nside, True
     ebv_pixs = np.arange(healpy.nside2npix(ebv_nside), dtype=int)
     ebv_ras, ebv_decs = healpy.pix2ang(ebv_nside, ebv_pixs, nest=ebv_nest, lonlat=True)
     ebv_vals = dust.ebv(ebv_ras, ebv_decs)
-
-    # tiles
-    tmain = tmain[tmain['IN_DESI'] != 0]
-    mdict = {
-        'bright' : tmain['PROGRAM'] == 'BRIGHT',
-        'dark' : tmain['PROGRAM'] == 'DARK',
-        'backup' : tmain['PROGRAM'] == 'BACKUP',
-    }
 
     cmaps = [plt.get_cmap("Greens"), plt.get_cmap("Blues"), plt.get_cmap("Oranges")]
 
@@ -62,11 +74,9 @@ def progress_footprint(tmain):
                               layout='constrained',
                               subplot_kw={'projection': 'mollweide'})
     for i, (name, mprog) in enumerate(mdict.items()):
+        print(f'Working on program {name}')
 
-        print(name)
-        #mprog = np.where(mprog)[0][:3]
-
-        # initialize figure
+        # initialize the figure
         #fig = plt.figure(figsize=(10, 5), dpi=150)
         #ax = fig.add_subplot(111, projection='mollweide')
         ax = allax[i]
@@ -80,25 +90,32 @@ def progress_footprint(tmain):
         ar_plot_sky(ax, ras, decs, c='k', lw=0.5, ls=':', zorder=10)
 
         # ebv
-        ax.scatter(
-            ax.projection_ra(ebv_ras),
-            ax.projection_dec(ebv_decs),
-            c=ebv_vals,
-            s=1,
-            alpha=0.02,
-            cmap=matplotlib.cm.gray_r,
-            vmin=0,
-            vmax=1,
-            rasterized=True,
-        )
+        ax.scatter(ax.projection_ra(ebv_ras),
+                   ax.projection_dec(ebv_decs),
+                   c=ebv_vals, s=1, alpha=0.02,
+                   cmap=matplotlib.cm.gray_r,
+                   vmin=0, vmax=1, rasterized=True)
 
         # completeness
-        avg, wt = paint_map(
-            tmain['RA'][mprog], tmain['DEC'][mprog],
-            np.clip(tmain['DONEFRAC'][mprog], 0, 1),
-            1.6, nside=128
-        )
-        avg[wt == 0] = np.nan
+        avg, wt = paint_map(tmain['RA'][mprog], tmain['DEC'][mprog],
+                            np.clip(tmain['DONEFRAC'][mprog], 0, 1), 1.6, nside=nside)
+
+        zenodofile = f'zenodo/{name}_completeness.csv'
+        if not os.path.isfile(zenodofile) or overwrite:
+            I = (avg != 0.) * (wt != 0.)
+            data = Table()
+            data['healpix_number'] = all_hpx[I]
+            data['completeness'] = avg[I]
+            with open(zenodofile, 'w') as F:
+                F.write(f'# Only healpixels with non-zero completeness are recorded.\n')
+                F.write(f'# nside={nside}, nest=False\n')
+                ascii.write(data, F, format='csv', overwrite=False)
+            print(f'Wrote {zenodofile}')
+            import pdb ; pdb.set_trace()
+
+        # make the plot
+        avg[wt == 0.] = np.nan
+
         plot_healpix_map(avg, cmap=cmaps[i], nest=False, ax=ax, colorbar=False)
         cbar = plt.colorbar(ax.collections[3], ax=ax, orientation='vertical',
                             spacing='proportional', pad=0.05, shrink=0.8, fraction=0.1, 
@@ -117,22 +134,29 @@ def progress_footprint(tmain):
                 tmpra = 59.8
             else:
                 tmpra = ra
-            ax.text(ax.projection_ra(np.array([tmpra])), ax.projection_dec(np.array([1.2])), txt, color="k", ha="center", va="bottom")
+            ax.text(ax.projection_ra(np.array([tmpra])), ax.projection_dec(np.array([1.2])), 
+                    txt, color="k", ha="center", va="bottom")
 
-        ## save
-        #plt.savefig('progress-{}.png'.format(name), bbox_inches='tight')
-        #plt.close()
 
-    outpng = 'progress.png'
+    outpng = 'figures/progress-iron.png'
     fig.savefig(outpng, bbox_inches="tight")
     plt.close()
     print(f'Wrote {outpng}')
 
-
 if __name__ == '__main__':
-    # pointing to my personal directory for now!  Needs to point to an r1776
-    # check-out of the survey-ops product; this corresponds to 2022-06-14.
-    tmainfn = os.path.expandvars(
-        '$DESI_ROOT/users/schlafly/dr1paper/ops/tiles-main.ecsv')
+
+    """Main routine.
+
+    """
+    import argparse
+    p = argparse.ArgumentParser()
+    p.add_argument("--overwrite", action="store_true", help="overwrite existing zenodo files?")
+    args = p.parse_args()
+
+    # read the (tagged) tiles file for iron
+    tmainfn = os.path.join(os.getenv('DESI_ROOT'), 'public', 'dr1', 'survey', 'ops', 
+                           'surveyops', 'tags', '0.9.1', 'ops', 'tiles-main.ecsv')
     tmain = Table.read(tmainfn)
-    progress_footprint(tmain)
+    print(f'Read {len(tmain):,d} tiles from {tmainfn}')
+
+    progress_footprint(tmain, overwrite=args.overwrite)
