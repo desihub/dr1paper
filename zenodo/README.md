@@ -48,10 +48,11 @@ Way Survey catalogs.
 ## Figure 5: 
 
 **Data files**:
-  * `zenodo/bright_density.csv` with columns `healpix_number,density`
-  * `zenodo/dark_density.csv` with columns `healpix_number,density`
-  * `zenodo/backup_density.csv` with columns `healpix_number,density`
-  * `zenodo/sv_density.csv` with columns `healpix_number,density`
+
+Data file: `zenodo/iron_goodz_density_hpix_nest_nside64.ecsv` with
+columns `healpix_number,main_bright,main_dark,main_backup,sv`, which
+give the surface density (in sq. deg) for each of the main-survey
+programs (bright, dark, backup) and for all SV programs.
 
 **Code**: `bin/plot_density_skymap`
 

@@ -23,163 +23,140 @@ from plot_utils import (get_survprogs, get_prod_pix_densities,
 
 
 def parse():
-    import argparse
-    p = argparse.ArgumentParser()
-    p.add_argument(
-        "--prod",
-        type=str,
-        default="iron",
-        choices=["iron"],
-        help="spectro. prod (default=iron)",
-    )
-    p.add_argument(
-        "--steps",
-        type=str,
-        default="dens,plot",
-        help="comma-separated list of steps (default=dens,plot)",
-    )
-    p.add_argument("--nside", type=int, default=64, help="HEALPix nside (default=64)")
-    # p.add_argument('--noplot', action='store_true', help="calc densities but don't plot")
-    p.add_argument(
-        "--debug",
-        action="store_true",
-        help="only read 1 percent of the data, and only plot main_dark",
-    )
-    p.add_argument("--overwrite", action="store_true", help="overwrite?")
-
-    args = p.parse_args()
-    for kwargs in args._get_kwargs():
-        print(kwargs)
-
-    for step in args.steps.split(","):
-        assert step in ["dens", "plot"]
-
     return args
 
 
-def main():
+def main(specprod='iron', nside=64, debug=False, overwrite=False):
 
-
-    pixdens_fn = f"{args.prod}_goodz_density_hpix_nest_nside{args.nside}.ecsv"
-    print(pixdens_fn)
-    outpng_root = f"{args.prod}_goodz_density"
-
-    nside = args.nside
     npix = healpy.nside2npix(nside)
 
+    pixdens_fn = f"zenodo/{specprod}_goodz_density_hpix_nest_nside{nside}.ecsv"
+    outpng = f"figures/{specprod}_goodz_density_4panel.png"
+
     # {survey,program}
-    survprogs = get_survprogs(args.prod)
+    survprogs = get_survprogs(specprod)
 
-    # - Density per healpix
-    if "dens" in args.steps.split(","):
+    pngnames = ["main_bright", "main_dark", "main_backup", "sv"]
+    keyss = [["main_bright"], ["main_dark"], ["main_backup"], ["cmx", "sv1", "sv2", "sv3"]]
 
-        if (os.path.isfile(pixdens_fn)) & (~args.overwrite):
-            msg = f"{pixdens_fn} exists and args.overwrite=False"
-            raise ValueError(msg)
-
+    # compute the density per healpix and write out
+    if not os.path.isfile(pixdens_fn) or overwrite:
         # - Compute
-        t = get_prod_pix_densities(args.prod, nside, debug=args.debug, verbose=True)
+        t = get_prod_pix_densities(specprod, nside, debug=debug, verbose=True)
+
+        # combine the cmx+sv programs
+        dens = np.zeros(npix)
+        for P in ["cmx", "sv1", "sv2", "sv3"]:
+            dens += t[P]
+        t['sv'] = dens
 
         # - Save density per healpix
+        t.rename_column('hpxpixel', 'healpix_number')
+        keepcols = ['healpix_number', ] + pngnames
+        t = t[keepcols]
         keep = np.zeros(len(t), dtype=bool)
-        for survey in survprogs:
+        for survey in pngnames: #survprogs:
             keep |= t[survey] > 0
         t = t[keep]
-        t.write(pixdens_fn, overwrite=args.overwrite)
+        
+        t.write(pixdens_fn, overwrite=overwrite)
         print(f"Wrote {pixdens_fn}")
+    else:
+        print(f'Reading existing file {pixdens_fn}')
 
-    # - Plots
-    if "plot" in args.steps.split(","):
+    # build the plot
+    t = Table.read(pixdens_fn)
+    nside = t.meta["HPXNSIDE"]
+    assert(t.meta["HPXNEST"] == True)
 
-        t = Table.read(pixdens_fn)
-        nside = t.meta["HPXNSIDE"]
-        assert t.meta["HPXNEST"] == True
+    climmlocs = {
+        'sv': (0, 8000, 2000),
+        #'special': (0, 5000, 1000),
+        'main_backup': (0, 2000, 500),
+        'main_bright': (0, 2000, 500),
+        'main_dark': (0, 2000, 500),
+        'main': (0, 8000, 2000),
+    }
 
-        climmlocs = {
-            'sv': (0, 8000, 2000),
-            'special': (0, 5000, 1000),
-            'main_backup': (0, 2000, 500),
-            'main_bright': (0, 2000, 500),
-            'main_dark': (0, 2000, 500),
-            'main': (0, 8000, 2000),
-        }
+    pixs = np.arange(npix, dtype=int)
+    ii = match_to(pixs, t["healpix_number"])
+    assert(np.all(pixs[ii] == t["healpix_number"]))
 
-        pixs = np.arange(npix, dtype=int)
-        ii = match_to(pixs, t["hpxpixel"])
-        assert np.all(pixs[ii] == t["hpxpixel"])
+    cmap_greens, cmap_blues, cmap_oranges, cmap_reds = get_custom_cmaps()
 
-        cmap_greens, cmap_blues, cmap_oranges, cmap_reds = get_custom_cmaps()
+    # 4-panel plot showing main bright, dark, backup, and all
+    ra_center = 120.
 
-        # 4-panel plot showing main bright, dark, backup, and all
-        pngnames = ["main_bright", "main_dark", "main_backup", "sv"]
-        keyss = [["main_bright"], ["main_dark"], ["main_backup"], ["cmx", "sv1", "sv2", "sv3"]]
-        outpng = f"{outpng_root}_4panel.png"
+    dummy_ras, dummy_decs, dummy_denss = np.array([240]), np.array([0]), np.array([0])
 
-        ra_center = 120.
+    fig, ax = plt.subplots(2, 2, figsize=(15, 10), dpi=150, 
+                           subplot_kw={'projection': 'mollweide'})
+    for pngname, keys, xx, cmap in zip(pngnames, keyss, ax.flat, 
+                                       [cmap_greens, cmap_blues, cmap_oranges, cmap_reds]):
+        print(f'Building sky map for {pngname}')
 
-        dummy_ras, dummy_decs, dummy_denss = np.array([240]), np.array([0]), np.array([0])
+        density = np.zeros(npix)
+        density[ii] = t[pngname]
+        #for key in keys:
+        #    density[ii] += t[key]
+        # set to NaN zero values
+        density[density == 0] = np.NaN
 
-        fig, ax = plt.subplots(2, 2, figsize=(15, 10), dpi=150, 
-                               subplot_kw={'projection': 'mollweide'})
-        for pngname, keys, xx, cmap in zip(pngnames, keyss, ax.flat, 
-                                           [cmap_greens, cmap_blues, cmap_oranges, cmap_reds]):
-            print(f'Building sky map for {pngname}')
+        density, clim, mloc, extend = remap_density(density, climmlocs[pngname])
 
-            density = np.zeros(npix)
-            density[ii] = 0.0
-            for key in keys:
-                density[ii] += t[key]
-            # set to NaN zero values
-            density[density == 0] = np.NaN
+        xx = init_sky(galactic_plane_color="none", ecliptic_plane_color="none", 
+                      ra_center=ra_center, ax=xx)
+        ar_init_sky(des=False, desi=False, ax=xx, nsbound=False)
 
-            density, clim, mloc, extend = remap_density(density, climmlocs[pngname])
-
-            xx = init_sky(galactic_plane_color="none", ecliptic_plane_color="none", 
-                          ra_center=ra_center, ax=xx)
-            ar_init_sky(des=False, desi=False, ax=xx, nsbound=False)
-
-            # re-print ra labels... (rellay not nice!)
-            xx.set_xticklabels([])
-            ras = np.array([180, 150, 120, 90, 60, 30, 0, 330, 270, 240, 210])
-            txts = np.array(['{0}°'.format(ra) for ra in ras])
-            for ra, txt in zip(ras, txts):
-                if ra == 60:
-                    tmpra = 59.8
-                else:
-                    tmpra = ra
-                xx.text(xx.projection_ra(np.array([tmpra])), xx.projection_dec(np.array([1.2])), 
-                        txt, color="k", ha="center", va="bottom")
-
-            #xx = ar_init_sky(des=False, ax=xx)
-            xx.grid(lw=0.25)
-            xx.set_axisbelow(True)
-            plot_healpix_map(density, cmap=cmap, nest=True, ax=xx, colorbar=False)
-            xx.set_title(pngname.replace('_', '/').replace('sv', 'survey validation').title())
-
-            # desi boundaries
-            # use main/dark for sv
-            if pngname == "sv":
-                prog = "DARK"
+        # re-print ra labels... (rellay not nice!)
+        xx.set_xticklabels([])
+        ras = np.array([180, 150, 120, 90, 60, 30, 0, 330, 270, 240, 210])
+        txts = np.array(['{0}°'.format(ra) for ra in ras])
+        for ra, txt in zip(ras, txts):
+            if ra == 60:
+                tmpra = 59.8
             else:
-                prog = pngname.split("_")[1].upper()
-            plot_desi_bounds(xx, prog, color="k", lw=2)
+                tmpra = ra
+            xx.text(xx.projection_ra(np.array([tmpra])), xx.projection_dec(np.array([1.2])), 
+                    txt, color="k", ha="center", va="bottom")
 
-            # for the colorbar, plot some dummy values under the edge
-            # of the DESI contour (hack!)
-            sc = xx.scatter(xx.projection_ra(dummy_ras), xx.projection_dec(dummy_decs),
-                            c=dummy_denss, cmap=cmap, clim=clim, zorder=-1)
-            ar_sky_cbar(xx, sc, 'Density of Confident Redshifts (deg$^{-2}$)', mloc=mloc, 
-                        extend=extend, location='bottom')
+        #xx = ar_init_sky(des=False, ax=xx)
+        xx.grid(lw=0.25)
+        xx.set_axisbelow(True)
+        plot_healpix_map(density, cmap=cmap, nest=True, ax=xx, colorbar=False)
+        xx.set_title(pngname.replace('_', '/').replace('sv', 'survey validation').title())
 
-        fig.savefig(outpng, bbox_inches="tight")
-        plt.close()
-        print(f'Wrote {outpng}')
+        # desi boundaries
+        # use main/dark for sv
+        if pngname == "sv":
+            prog = "DARK"
+        else:
+            prog = pngname.split("_")[1].upper()
+        plot_desi_bounds(xx, prog, color="k", lw=2)
+
+        # for the colorbar, plot some dummy values under the edge
+        # of the DESI contour (hack!)
+        sc = xx.scatter(xx.projection_ra(dummy_ras), xx.projection_dec(dummy_decs),
+                        c=dummy_denss, cmap=cmap, clim=clim, zorder=-1)
+        ar_sky_cbar(xx, sc, 'Density of Confident Redshifts (deg$^{-2}$)', mloc=mloc, 
+                    extend=extend, location='bottom')
+
+    fig.savefig(outpng, bbox_inches="tight")
+    plt.close()
+    print(f'Wrote {outpng}')
 
 
 if __name__ == "__main__":
+    """Main function.
 
-    args = parse()
-    
+    """
+    import argparse
+    p = argparse.ArgumentParser()
+    p.add_argument("--specprod", type=str, default="iron",
+        choices=["iron"], help="spectroscopic production")
+    p.add_argument("--nside", type=int, default=64, help="HEALPix nside (default=64)")
+    p.add_argument("--debug", action="store_true", help="only read 1 percent of the data, and only plot main_dark")
+    p.add_argument("--overwrite", action="store_true", help="overwrite?")
+    args = p.parse_args()
 
-
-    main()
+    main(specprod=args.specprod, nside=args.nside, debug=args.debug, overwrite=args.overwrite)
