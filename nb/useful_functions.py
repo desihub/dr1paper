@@ -22,7 +22,11 @@ def get_comoving_coords(catalog):
         # Convert to comoving coordinates but only if the catalog doesn't already have them
         catalog['dist_comoving'] = cosmo.comoving_distance(catalog['Z'])
     catalog['RA_rot'] -= 31 # just for plotting, remove later
-    c = SkyCoord(ra=catalog['RA_rot'], dec=catalog['DEC_rot'], distance=catalog['dist_comoving'])
+    try:
+        c = SkyCoord(ra=catalog['RA_rot'], dec=catalog['DEC_rot'], distance=catalog['dist_comoving'])
+    except:
+        print('assuming RA and DEC are in degrees')
+        c = SkyCoord(ra=catalog['RA_rot']*u.deg, dec=catalog['DEC_rot']*u.deg, distance=catalog['dist_comoving'])
     catalog['x_comoving'] = c.cartesian.x
     catalog['y_comoving'] = c.cartesian.y
     catalog['z_comoving'] = c.cartesian.z
