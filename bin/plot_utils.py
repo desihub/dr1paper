@@ -361,13 +361,8 @@ def custom_plot_sky_line(ax, ras, decs, sepmax_deg, **kwargs):
 
 def plot_desi_bounds(ax, bound_prog, **kwargs):
     assert bound_prog in ["BACKUP", "BRIGHT4PASS", "BRIGHT", "DARK"]
-    fn = os.path.join(
-        os.getenv("DESI_ROOT"),
-        "users",
-        "raichoor",
-        "footprints",
-        "desi-boundaries.ecsv",
-    )
+    #fn = os.path.join(os.getenv("DESI_ROOT"), "users", "raichoor", "footprints", "desi-boundaries.ecsv")
+    fn = 'desi-boundaries.ecsv'
     d = Table.read(fn)
     d["RA"][d["RA"] < 0] += 360
     d = d[d["PROGRAM"] == bound_prog]
